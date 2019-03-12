@@ -36,7 +36,7 @@ def extract_young_data(data, header, cutoff):
         birthyear_curr = int(item[header.index('birthyear')])
 
         # Consider people born in [1946, 1987]
-        if birthyear_curr >= cutoff and birthyear_curr <= 1945:
+        if birthyear_curr >= cutoff or birthyear_curr <= 1945:
             continue
 
         if id_curr != item[header.index('id')]:
@@ -163,7 +163,7 @@ def save_model_data(filepath, num_year):
             data_all.append(row)
     header = data_all[0]
     data_all = data_all[1:]
-    for i in range(num_year):
+    for i in range(len(data_all)//num_year):
         data_ind = data_all[i * num_year: (i + 1) * num_year]
         with open('/Users/MengqiaoYu/Desktop/WholeTraveler/Data/model/' + str(i+1) + '.csv', 'w') as f:
             writer = csv.writer(f)
