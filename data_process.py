@@ -21,7 +21,7 @@ def remove_na(data, header):
     logger.info("\tThere are %d unqiue id (person) in the cleaned dataset." %(len(set(id_clean_lh))))
     return data
 
-def extract_young_data(data, header):
+def extract_young_data(data, header, cutoff):
     """
     extract those people that contain full data points from age 20-31 (12 years)
     return a list of data # of lines must = # of people * 15 (years)
@@ -31,7 +31,7 @@ def extract_young_data(data, header):
     results = []
     result_curr = []
     count = 0
-    cutoff = 1988
+
     for item in data:
         birthyear_curr = int(item[header.index('birthyear')])
 
@@ -152,6 +152,25 @@ def find_generation(birthyear):
     else:
         return "silent"
 
+def save_model_data(filepath, num_year):
+    """
+    save all the long format longitudinal data into each single file.
+    no return
+    """
+    data_all = []
+    with open(filepath,'r') as inputfile:
+        for row in csv.reader(inputfile):
+            data_all.append(row)
+    header = data_all[0]
+    data_all = data_all[1:]
+    for i in range(num_year):
+        data_ind = data_all[i * num_year: (i + 1) * num_year]
+        with open('/Users/MengqiaoYu/Desktop/WholeTraveler/Data/model/' + str(i+1) + '.csv', 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+            writer.writerows(data_ind)
+
+
 """Load life history dataset. Nothing is done right now."""
 ### one person one year per line, 'lh' suffix represents lifehistory
 logger.info("(I) Start loading two datasets. No data cleaning.")
@@ -179,7 +198,7 @@ with open("/Users/MengqiaoYu/Desktop/WholeTraveler/Data/crossection_full.final.c
 header_cs = rawdata_cs[0]
 rawdata_cs = rawdata_cs[1:]
 logger.debug("The header is %s, and there are %d columns." %(header_cs, len(header_cs)))
-logger.debug("There are %d lines in the cross sectional dataset." %(len(rawdata_cs)))
+logger.info("There are %d lines in the cross sectional dataset." %(len(rawdata_cs)))
 
 id_cs = [item[header_cs.index('id')] for item in rawdata_cs]
 assert len(id_cs) == len(set(id_cs)), "Alert: There are duplicate records for one person."
@@ -193,6 +212,13 @@ assert len(id_cs) == len(set(id_cs)), "Alert: There are duplicate records for on
 """Create a new dataset for model"""
 logger.info("(II) Generate a new dataset for people have a full history between age 20-34.")
 cleandata_lh = remove_na(rawdata_lh, header_lh) # rawdata_lh is changed = cleandata_lh
-cleandata_yound_lh = extract_young_data(cleandata_lh, header_lh)
+cutoff = 1988
+cleandata_yound_lh = extract_young_data(cleandata_lh, header_lh, cutoff)
+save_model_data(filepath='/Users/MengqiaoYu/Desktop/WholeTraveler/Data/young_data.csv', num_year=2000-cutoff)
 
 
+"""Merge some info from cross sectional data"""
+# Gender?
+
+"""Add policy variables to the dataset"""
+# fuel price, unemployment rate
