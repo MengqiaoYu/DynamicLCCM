@@ -55,19 +55,9 @@ class BasicHMM():
 
         for t in range(T-2, -1, -1):
             for i in range(K):
-
-
                 log_beta[t, i] = logsumexp(log_beta[t+1, :]
                                            + log_a[i, :]
                                            + log_b[:, o[t+1]])
-                # import pdb; pdb.set_trace()
-                # if log_beta[t, i] > 0:
-                #     logger.debug(t)
-                #     logger.debug(i)
-                #     logger.debug(log_beta[t+1, :])
-                #     logger.debug(log_a[:, i])
-                #     logger.debug(log_b[:, o[t+1]])
-                # import pdb; pdb.set_trace()
         return log_beta
 
     def _calc_log_xi(self, log_a, log_b, log_alpha, log_beta, o, log_ll):
@@ -146,7 +136,7 @@ class BasicHMM():
 
         return log_a_hat, log_b_hat, log_pi_hat
 
-    def set_inputs(self, o, rand_seed = 10):
+    def set_inputs(self, o, rand_seed = 0):
         T = np.shape(o)[0] # number of timestamps
         C = len(np.unique(o)) # number of choices
 
@@ -196,13 +186,17 @@ class BasicHMM():
         logger.info("-----------------------THE END-----------------------")
 
 class MixtureHMM(BasicHMM):
+    """
+    Feature 1: deal with multiple sequences with same time stamps.
+    """
     #TODO: two kinds of choices
     #TODO: transition matrix adds covariates
     #TODO: add std
 
     def m_step(self):
         """calculate estimated parameters"""
-        self.log_pi = np.mean([self.log_gammas[s][:, 0] for s in range(self.num_seq)], axis=0)
+        # Be careful with the mean of logsumexp, which is incorrect!
+        self.log_pi = np.log(np.mean([np.exp(self.log_gammas[s][:, 0]) for s in range(self.num_seq)], axis=0))
 
         for i in range(self.num_states):
             # calculate log_a: transition matrix
@@ -269,9 +263,11 @@ class MixtureHMM(BasicHMM):
             before_ll = after_ll
 
             # Print progress during estimation
-            if i % 10 == 1:
+            if i % 5 == 1:
                 logger.info("\tThis is %d iteration, ll = %s." %(i, after_ll))
+                # import pdb; pdb.set_trace()
                 self.print_results(log_a=self.log_a, log_b=self.log_b, log_pi=self.log_pi)
+
 
         # Print final results
         logger.info("\tThe estimation results are:")
