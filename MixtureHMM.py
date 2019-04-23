@@ -3,7 +3,6 @@ from scipy.misc import logsumexp
 # import warnings
 import logging
 
-
 __author__ = "Mengqiao Yu"
 __email__ = "mengqiao.yu@berkeley.edu"
 
@@ -108,28 +107,27 @@ class BasicHMM():
         """
         # import pdb; pdb.set_trace()
 
-        log_alpha = self.forward(log_a, log_b, o, log_pi)
+        log_alpha = self._forward(log_a, log_b, o, log_pi)
         # print("This is log_alpha %s" %log_alpha[-2:])
         # import pdb; pdb.set_trace()
 
-        log_beta = self.backward(log_a, log_b, o)
+        log_beta = self._backward(log_a, log_b, o)
         # print("This is log_beta %s" %np.exp(log_beta[-2:]))
 
-        log_ll = self.cal_log_likelihood(log_alpha)
+        log_ll = self._cal_log_likelihood(log_alpha)
         # print("This is ll %s." %log_ll)
 
-        log_si = self.calc_log_xi(log_a, log_b, log_alpha, log_beta, o, log_ll)
+        log_si = self._calc_log_xi(log_a, log_b, log_alpha, log_beta, o, log_ll)
         # print("This is log_si %s" %np.exp(log_si[:, :, -1]))
 
-        log_gamma = self.calc_log_gamma(log_alpha, log_beta, log_ll)
+        log_gamma = self._calc_log_gamma(log_alpha, log_beta, log_ll)
         # print("This is log_gamma %s" %np.exp(log_gamma[-1]))
 
         return log_si, log_gamma, log_ll
 
-    def M_step(self, log_si, log_gamma, o):
+    def m_step(self, log_si, log_gamma, o):
 
         T = np.shape(o)[0] # number of timestamps
-        #TODO: different discrete choices
         C = len(np.unique(o)) # number of choices
 
         log_pi_hat = log_gamma[:, 0]
@@ -174,7 +172,7 @@ class BasicHMM():
         self.print_results(log_a=log_a, log_b=log_b, log_pi=log_pi)
 
         # Start training
-        log_si, log_gamma, log_ll = self.forward_backward(log_a=log_a, log_b=log_b, o=obs, log_pi=log_pi)
+        log_si, log_gamma, log_ll = self._forward_backward(log_a=log_a, log_b=log_b, o=obs, log_pi=log_pi)
 
         before = log_ll
         increase = cutoff_value + 1
@@ -182,7 +180,7 @@ class BasicHMM():
         while(increase <= 0 or increase > cutoff_value):
             i += 1
             log_a, log_b, log_pi = self.M_step(log_si=log_si, log_gamma=log_gamma, o=obs)
-            log_si, log_gamma, log_ll = self.forward_backward(log_a=log_a, log_b=log_b, o=obs, log_pi=log_pi)
+            log_si, log_gamma, log_ll = self._forward_backward(log_a=log_a, log_b=log_b, o=obs, log_pi=log_pi)
             after = log_ll
             increase = after - before
             before = after
@@ -198,41 +196,36 @@ class BasicHMM():
         logger.info("-----------------------THE END-----------------------")
 
 class MixtureHMM(BasicHMM):
-    #TODO: many data points
     #TODO: two kinds of choices
     #TODO: transition matrix adds covariates
-    #TODO: different length of sequences
-    def __init__(self, num_states=2):
-        self.num_states = num_states
-
-
-    def cal_log_a(self, param, X,):
-        """log_a: log of probability of transition matrix"""
-        log_prob_transition = np.zeros((self.num_states, self.num_states))
-        for i in range(self.num_states):
-            log_prob_transition[i] = param.T.dot(X)
-        return log_prob_transition
-
+    #TODO: add std
 
     def m_step(self):
-
-        #TODO: different discrete choices
+        """calculate estimated parameters"""
         self.log_pi = np.mean([self.log_gammas[s][:, 0] for s in range(self.num_seq)], axis=0)
-        # log_a_hat = np.zeros((self.num_states, self.num_states))
-        # log_b_hat = np.zeros((self.num_states, self.num_choices))
 
         for i in range(self.num_states):
+            # calculate log_a: transition matrix
             for j in range(self.num_states):
-                # import pdb; pdb.set_trace()
-                self.log_a[i, j] = np.sum([logsumexp(self.log_sis[s][i, j, :self.num_timesteps-1]) for s in range(self.num_seq)]) \
-                                  - np.sum([logsumexp(self.log_gammas[s][i, :self.num_timesteps-1]) for s in range(self.num_seq)])
+                sum_si = 0
+                sum_gamma = 0
+                for s in range(self.num_seq):
+                    sum_si += np.sum(np.exp(self.log_sis[s][i, j, :self.num_timesteps-1]))
+                    sum_gamma += np.sum(np.exp(self.log_gammas[s][i, :self.num_timesteps-1]))
+                self.log_a[i, j] = np.log(sum_si) - np.log(sum_gamma)
 
-            # import pdb; pdb.set_trace()
-
+            # calculate log_b: emission matrix
             for k in range(self.num_choices):
                 # filter_vals = (self.obs_seq[s] == k).nonzero()[0]
-                self.log_b[i, k] = np.sum([logsumexp(self.log_gammas[s][i, (self.obs_seq[s] == k).nonzero()[0]]) for s in range(self.num_seq)]) \
-                                  - np.sum([logsumexp(self.log_gammas[s][i, :self.num_timesteps]) for s in range(self.num_seq)])
+                sum_gamma_y = 0
+                sum_gamma = 0
+                for s in range(self.num_seq):
+                    try:
+                        sum_gamma_y += np.sum(np.exp(self.log_gammas[s][i, (self.obs_seq[s] == k).nonzero()[0]]))
+                    except ValueError:
+                        pass
+                    sum_gamma += np.sum(np.exp(self.log_gammas[s][i, :self.num_timesteps]))
+                self.log_b[i, k] = np.log(sum_gamma_y) - np.log(sum_gamma)
 
     def e_step(self):
         """calculate log_si, log_gamma, log_ll for all sequences"""
@@ -240,7 +233,7 @@ class MixtureHMM(BasicHMM):
         self.log_gammas = []
         self.log_lls = []
         for obs in self.obs_seq:
-            log_si, log_gamma, log_ll = self.forward_backward(log_a=self.log_a,
+            log_si, log_gamma, log_ll = self._forward_backward(log_a=self.log_a,
                                                               log_b=self.log_b,
                                                               o=obs,
                                                               log_pi=self.log_pi)
@@ -268,14 +261,15 @@ class MixtureHMM(BasicHMM):
         while(increase <= 0 or increase > cutoff_value):
             i += 1
 
+            # Execute EM algorithm
             self.m_step()
             self.e_step()
             after_ll = sum(self.log_lls)
             increase = after_ll - before_ll
-            before = after_ll
+            before_ll = after_ll
 
-            # Print progress
-            if i % 100 == 1:
+            # Print progress during estimation
+            if i % 10 == 1:
                 logger.info("\tThis is %d iteration, ll = %s." %(i, after_ll))
                 self.print_results(log_a=self.log_a, log_b=self.log_b, log_pi=self.log_pi)
 
