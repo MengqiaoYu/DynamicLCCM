@@ -32,7 +32,6 @@ class BasicHMM():
         log_alpha = np.zeros((T, K))
 
         # alpha(q_0)
-        # import pdb; pdb.set_trace()
         log_alpha[0, :] = log_pi + log_b[:, o[0]]
 
         # alpha(q_t)
@@ -47,7 +46,6 @@ class BasicHMM():
         """
         log of P(y)
         """
-        # print(logsumexp(log_alpha[-1]))
         return logsumexp(log_alpha[-1])
 
     def _backward(self, log_a, log_b, o):
@@ -82,8 +80,8 @@ class BasicHMM():
                     log_xi[i, j, t] = log_alpha[t, i] \
                                       + log_b[j, o[t+1]] \
                                       + log_beta[t+1, j] \
-                                      + log_a[i, j]
-            log_xi[:, :, t] -= log_ll
+                                      + log_a[i, j] \
+                                      - log_ll
 
         return log_xi
 
@@ -92,7 +90,7 @@ class BasicHMM():
         gamma(q_t) = P(q_t | y)
         return gamma (K*T)
         """
-
+        # import pdb; pdb.set_trace()
         log_gamma = log_alpha + log_beta - log_ll
         return log_gamma.T
 
@@ -100,11 +98,9 @@ class BasicHMM():
         """
         E step
         """
-        # import pdb; pdb.set_trace()
 
         log_alpha = self._forward(log_a, log_b, o, log_pi)
         # print("This is log_alpha %s" %log_alpha[-2:])
-        # import pdb; pdb.set_trace()
 
         log_beta = self._backward(log_a, log_b, o)
         # print("This is log_beta %s" %np.exp(log_beta[-2:]))
@@ -131,10 +127,8 @@ class BasicHMM():
 
         for i in range(self.num_states):
             for j in range(self.num_states):
-                # import pdb; pdb.set_trace()
                 log_a_hat[i, j] = logsumexp(log_si[i, j, :T-1]) - logsumexp(log_gamma[i, :T-1])
 
-            # import pdb; pdb.set_trace()
             for k in range(C):
                 filter_vals = (o == k).nonzero()[0]
                 log_b_hat[i, k] = logsumexp(log_gamma[i, filter_vals]) - logsumexp(log_gamma[i, :T])
@@ -192,9 +186,9 @@ class BasicHMM():
 
 class MixtureHMM(BasicHMM):
     """
-    Feature 1: deal with multiple sequences with same time stamps.
+    Feature 1: deal with multiple sequences with same number of time stamps.
+    Feature 2: deal with multiple choice models.
     """
-    #TODO: two kinds of choices
     #TODO: transition matrix adds covariates
     #TODO: add std
 
@@ -204,12 +198,12 @@ class MixtureHMM(BasicHMM):
         :param log_a: log of transition matrix prob
         :type log_a: numpy array
         :param log_choice_prob: log of all emission probs from state i at timestamp t
-        logP(y_1) + logP(y_2) (T * K)
+                                logP(y_1) + logP(y_2) (T * K)
         :type log_choice_prob: numpy array
         :param log_pi: log of initial matrix prob
         """
-        K = np.shape(log_choice_prob)[0] # number of states
         T = np.shape(log_choice_prob)[0] # number of timestamps
+        K = np.shape(log_choice_prob)[1] # number of states
 
         log_alpha = np.zeros((T, K))
 
@@ -220,6 +214,7 @@ class MixtureHMM(BasicHMM):
         for t in range(1, T):
             log_alpha[t, :] = logsumexp(log_alpha[t-1, :] + log_a.T, axis=1) \
                               + log_choice_prob[t, :]
+        # Here is the detailed version, slower.
         # for t in range(1, T):
         #     for i in range(K):
         #         log_alpha[t, i] = logsumexp(log_alpha[t-1, :] + log_a[:, i]) \
@@ -229,8 +224,8 @@ class MixtureHMM(BasicHMM):
 
     def _backward(self, log_a, log_choice_prob):
 
-        K = np.shape(log_choice_prob)[0] # number of states
         T = np.shape(log_choice_prob)[0] # number of timestamps
+        K = np.shape(log_choice_prob)[1] # number of states
 
         log_beta = np.zeros((T, K))
         # We don't need to specify the log_beta[t-1, :] since we have set to zero.
@@ -239,34 +234,34 @@ class MixtureHMM(BasicHMM):
             log_beta[t, :] = logsumexp(log_beta[t+1, :]
                                        + log_a
                                        + log_choice_prob[t+1, :], axis = 1)
-        # for t in range(T-2, -1, -1):
-        #     for i in range(K):
-        #         log_beta[t, i] = logsumexp(log_beta[t+1, :]
-        #                                    + log_a[i, :]
-        #                                    + log_choice_prob[t+1, i])
+
         return log_beta
 
     def _forward_backward(self, log_a, log_choice_prob, log_pi):
         """
         E step
         """
-        # import pdb; pdb.set_trace()
 
+        # Clear check with benchmark
         log_alpha = self._forward(log_a, log_choice_prob, log_pi)
-        # print("This is log_alpha %s" %log_alpha[-2:])
-        # import pdb; pdb.set_trace()
+        # print("This is alpha %s" %log_alpha)
 
+        # Clear check with benchmark
         log_beta = self._backward(log_a, log_choice_prob)
-        # print("This is log_beta %s" %np.exp(log_beta[-2:]))
+        # print("This is beta %s" %log_beta)
 
+        # Clear check with benchmark
         log_ll = self._cal_log_likelihood(log_alpha)
         # print("This is ll %s." %log_ll)
 
+        # Clear check with benchmark
         log_si = self._calc_log_xi(log_a, log_choice_prob, log_alpha, log_beta, log_ll)
-        # print("This is log_si %s" %np.exp(log_si[:, :, -1]))
+        # for t in range(self.num_timesteps):
+        #     print("This is si %s" %log_si[:, :, t])
 
+        # Clear check with benchmark
         log_gamma = self._calc_log_gamma(log_alpha, log_beta, log_ll)
-        # print("This is log_gamma %s" %np.exp(log_gamma[-1]))
+        # print("This is gamma %s" %log_gamma[-2:])
 
         return log_si, log_gamma, log_ll
 
@@ -276,8 +271,8 @@ class MixtureHMM(BasicHMM):
         xi(q_t, q_t+1) = P(q_t, q_t+1|y)
         """
 
-        K = np.shape(log_choice_prob)[0] # number of states
         T = np.shape(log_choice_prob)[0] # number of timestamps
+        K = np.shape(log_choice_prob)[1] # number of states
 
         log_xi = np.zeros((K, K, T))
 
@@ -285,11 +280,10 @@ class MixtureHMM(BasicHMM):
             for i in range(K):
                 for j in range(K):
                     log_xi[i, j, t] = log_alpha[t, i] \
-                                      + log_choice_prob[t, j] \
+                                      + log_choice_prob[t+1, j] \
                                       + log_beta[t+1, j] \
-                                      + log_a[i, j]
-            log_xi[:, :, t] -= log_ll
-
+                                      + log_a[i, j] \
+                                      - log_ll
         return log_xi
 
     def cal_log_prob_choices(self, log_b, o):
@@ -310,11 +304,11 @@ class MixtureHMM(BasicHMM):
         """
         calculate estimated parameters
         """
-
         # Be careful with the mean of logsumexp, which is incorrect!
         self.log_pi = np.log(np.mean([np.exp(self.log_gammas[s][:, 0]) for s in range(self.num_seq)], axis=0))
 
         for i in range(self.num_states):
+
             # calculate log_a: transition matrix
             for j in range(self.num_states):
                 sum_si = 0
@@ -324,7 +318,7 @@ class MixtureHMM(BasicHMM):
                     sum_gamma += np.sum(np.exp(self.log_gammas[s][i, :self.num_timesteps-1]))
                 self.log_a[i, j] = np.log(sum_si) - np.log(sum_gamma)
 
-            # calculate log_b: emission matrix
+            # calculate log_b: emission matrix for each choice model
             for c in range(self.num_choice_models):
                 for k in range(self.num_choices[c]):
                     # filter_vals = (self.obs_seq[s] == k).nonzero()[0]
@@ -375,7 +369,7 @@ class MixtureHMM(BasicHMM):
         logger.info("The initial values are:")
         self.print_results(log_a=self.log_a, log_b=self.log_b, log_pi=self.log_pi)
 
-        # Start training
+        #Start training
         self.e_step()
         before_ll = sum(self.log_lls)
 
@@ -384,7 +378,7 @@ class MixtureHMM(BasicHMM):
         while(increase <= 0 or increase > cutoff_value):
             i += 1
 
-            # Execute EM algorithm
+            # Run EM algorithm
             self.m_step()
             self.e_step()
             after_ll = sum(self.log_lls)
@@ -394,11 +388,10 @@ class MixtureHMM(BasicHMM):
             # Print progress during estimation
             if i % 5 == 1:
                 logger.info("\tThis is %d iteration, ll = %s." %(i, after_ll))
-                # import pdb; pdb.set_trace()
                 self.print_results(log_a=self.log_a, log_b=self.log_b, log_pi=self.log_pi)
-
 
         # Print final results
         logger.info("\tThe estimation results are:")
         self.print_results(log_a=self.log_a, log_b=self.log_b, log_pi=self.log_pi)
+
         logger.info("-----------------------THE END-----------------------")

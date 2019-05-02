@@ -17,7 +17,7 @@ def sampling(N=1000, num_states = 2, num_timesteps = 12):
     seq = []
     for i in range(N):
         X, Z = model.sample(n_samples=num_timesteps)
-        seq.append(X.reshape(-1))
+        seq.append(X)
     return seq
 
 sample = sampling()
