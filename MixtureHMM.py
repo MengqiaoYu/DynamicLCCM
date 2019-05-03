@@ -1,12 +1,10 @@
 import numpy as np
 from scipy.misc import logsumexp
-# import warnings
 import logging
 
 __author__ = "Mengqiao Yu"
 __email__ = "mengqiao.yu@berkeley.edu"
 
-# warnings.simplefilter("ignore")
 logger = logging.getLogger()
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
 
@@ -67,6 +65,7 @@ class BasicHMM():
         """
         calculate xi built on alpha and beta.
         xi(q_t, q_t+1) = P(q_t, q_t+1|y)
+        return log_xi (K * K * T)
         """
 
         K = np.shape(log_b)[0] # number of states
@@ -90,7 +89,6 @@ class BasicHMM():
         gamma(q_t) = P(q_t | y)
         return gamma (K*T)
         """
-        # import pdb; pdb.set_trace()
         log_gamma = log_alpha + log_beta - log_ll
         return log_gamma.T
 
@@ -100,19 +98,14 @@ class BasicHMM():
         """
 
         log_alpha = self._forward(log_a, log_b, o, log_pi)
-        # print("This is log_alpha %s" %log_alpha[-2:])
 
         log_beta = self._backward(log_a, log_b, o)
-        # print("This is log_beta %s" %np.exp(log_beta[-2:]))
 
         log_ll = self._cal_log_likelihood(log_alpha)
-        # print("This is ll %s." %log_ll)
 
         log_si = self._calc_log_xi(log_a, log_b, log_alpha, log_beta, o, log_ll)
-        # print("This is log_si %s" %np.exp(log_si[:, :, -1]))
 
         log_gamma = self._calc_log_gamma(log_alpha, log_beta, log_ll)
-        # print("This is log_gamma %s" %np.exp(log_gamma[-1]))
 
         return log_si, log_gamma, log_ll
 
@@ -188,6 +181,7 @@ class MixtureHMM(BasicHMM):
     """
     Feature 1: deal with multiple sequences with same number of time stamps.
     Feature 2: deal with multiple choice models.
+    Feature 3; heterogeneous HMM
     """
     #TODO: transition matrix adds covariates
     #TODO: add std
@@ -195,7 +189,7 @@ class MixtureHMM(BasicHMM):
     def _forward(self, log_a, log_choice_prob, log_pi):
         """
         return log_alpha
-        :param log_a: log of transition matrix prob
+        :param log_a: log of transition matrix prob (K * K)
         :type log_a: numpy array
         :param log_choice_prob: log of all emission probs from state i at timestamp t
                                 logP(y_1) + logP(y_2) (T * K)
@@ -244,11 +238,11 @@ class MixtureHMM(BasicHMM):
 
         # Clear check with benchmark
         log_alpha = self._forward(log_a, log_choice_prob, log_pi)
-        # print("This is alpha %s" %log_alpha)
+        # print("This is alpha %s" %np.exp(log_alpha))
 
         # Clear check with benchmark
         log_beta = self._backward(log_a, log_choice_prob)
-        # print("This is beta %s" %log_beta)
+        # print("This is beta %s" %np.exp(log_beta))
 
         # Clear check with benchmark
         log_ll = self._cal_log_likelihood(log_alpha)
@@ -257,11 +251,11 @@ class MixtureHMM(BasicHMM):
         # Clear check with benchmark
         log_si = self._calc_log_xi(log_a, log_choice_prob, log_alpha, log_beta, log_ll)
         # for t in range(self.num_timesteps):
-        #     print("This is si %s" %log_si[:, :, t])
+        #     print("This is si %s" %np.exp(log_si[:, :, t]))
 
         # Clear check with benchmark
         log_gamma = self._calc_log_gamma(log_alpha, log_beta, log_ll)
-        # print("This is gamma %s" %log_gamma[-2:])
+        # print("This is gamma %s" %np.exp(log_gamma[-2:]))
 
         return log_si, log_gamma, log_ll
 
@@ -297,7 +291,7 @@ class MixtureHMM(BasicHMM):
         log_choice_prob = np.zeros((T, self.num_states))
         for t in range(T):
             for i in range(self.num_states):
-                log_choice_prob[t, i] = np.sum([log_b[c][i, o[t]] for c in range(num_of_choice_models)])
+                log_choice_prob[t, i] = np.sum([log_b[c][i, o[t][c]] for c in range(num_of_choice_models)])
         return log_choice_prob
 
     def m_step(self):
@@ -321,7 +315,6 @@ class MixtureHMM(BasicHMM):
             # calculate log_b: emission matrix for each choice model
             for c in range(self.num_choice_models):
                 for k in range(self.num_choices[c]):
-                    # filter_vals = (self.obs_seq[s] == k).nonzero()[0]
                     sum_gamma_y = 0
                     sum_gamma = 0
                     for s in range(self.num_seq):
@@ -346,18 +339,19 @@ class MixtureHMM(BasicHMM):
             self.log_gammas.append(log_gamma)
             self.log_lls.append(log_ll)
 
-    def initialize(self, rand_seed = 0):
-        np.random.seed(rand_seed)
+    def initialize(self):
+        # np.random.seed(rand_seed)
 
         log_pi = np.log(np.ndarray.flatten(np.random.dirichlet(np.ones(self.num_states), size=1)))
         log_a = np.log(np.random.dirichlet(np.ones(self.num_states),size=self.num_states))
         log_b = []
         for c in range(self.num_choice_models):
+            # c represents one choice model
             log_b_c = np.log(np.random.dirichlet(np.ones(self.num_choices[c]), size=self.num_states))
             log_b.append(log_b_c)
         return log_a, log_b, log_pi
 
-    def train(self, obs_seq, cutoff_value):
+    def train(self, obs_seq, cutoff_value, max_iter):
 
         # Initialization
         self.obs_seq = obs_seq
@@ -375,7 +369,7 @@ class MixtureHMM(BasicHMM):
 
         increase = cutoff_value + 1
         i = 0
-        while(increase <= 0 or increase > cutoff_value):
+        while(increase <= 0 or increase > cutoff_value or i < max_iter):
             i += 1
 
             # Run EM algorithm
@@ -386,9 +380,10 @@ class MixtureHMM(BasicHMM):
             before_ll = after_ll
 
             # Print progress during estimation
-            if i % 5 == 1:
+            if i % 10 == 1:
                 logger.info("\tThis is %d iteration, ll = %s." %(i, after_ll))
                 self.print_results(log_a=self.log_a, log_b=self.log_b, log_pi=self.log_pi)
+                # import pdb;pdb.set_trace()
 
         # Print final results
         logger.info("\tThe estimation results are:")
