@@ -24,14 +24,13 @@ class TransitionModel():
                                         fit_intercept=self.intercept_fit,
                                         warm_start=True)
 
-
     def _data_formatter(self, X, y):
         """
         reformat/augment data matrix to fit multinomial logit model with prob output.
         Parameters
         ----------
-        X: (num of obs * num of covariates)
-        y: (num of obs * num of classes)
+        X: np array (num of obs , num of covariates)
+        y: np array (num of obs , num of classes)
         Returns
         ----------
         X_augmented: (num of obs * num of classes, num of covariates)
@@ -53,6 +52,16 @@ class TransitionModel():
         self.model.multi_class = multi_class
         X_new, y_new, sample_weight = self._data_formatter(X, y)
         self.model.fit(X_new, y_new, sample_weight=sample_weight)
+
+    def predict_log_proba(self, X):
+        return self.model.predict_log_proba(X)
+
+    def get_params(self):
+        return np.concatenate((
+            self.model.intercept_.reshape(self.model.intercept_.shape[0],1),
+            self.model.coef_))
+
+
 
 
 
