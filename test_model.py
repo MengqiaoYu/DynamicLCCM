@@ -8,7 +8,8 @@ __email__ = "mengqiao.yu@berkeley.edu"
 
 
 # generate multiple sequences of sample
-def sampling(N=1000, num_states = 2, num_timesteps = 12):
+def sampling_mixture(N=1000, num_states = 2, num_timesteps = 12):
+    """test for BasicHMM"""
     model = hmm.MultinomialHMM(n_components=num_states)
     model.startprob_ = np.array([0.4, 0.6])
     model.transmat_ = np.array([[0.7, 0.3],
@@ -30,10 +31,18 @@ def sampling(N=1000, num_states = 2, num_timesteps = 12):
 
         X = np.concatenate((X_1, X_2), axis=1)
         seq.append(X)
-    print(seq[10])
+    # print(seq[10])
     return seq
 
-sample = sampling()
+def sampling_mixture(N=1000, num_states=2, num_timesteps = 12):
+    """test for MixtureHMM"""
+    #TODO: generate sample for mixture HMM
+    raise NotImplementedError
 
-MHMM = MixtureHMM.MixtureHMM(num_states=2)
+
+# test BasicHMM
+sample = sampling_mixture()
+MHMM = MixtureHMM.BasicHMM(num_states=2)
 MHMM.train(obs_seq=sample, cutoff_value=1e-3, max_iter=500)
+
+#
