@@ -27,8 +27,8 @@ class BasicHMM():
         :param o: one sequence of observations
         :type o: numpy array
         """
-        K = np.shape(log_b)[0] # number of states
-        T = np.shape(o)[0] # number of timestamps
+        K = log_b.shape[0] # number of states
+        T = o.shape[0] # number of timestamps
 
         log_alpha = np.zeros((T, K))
 
@@ -51,8 +51,8 @@ class BasicHMM():
 
     def _backward(self, log_a, log_b, o):
 
-        K = np.shape(log_b)[0] # number of states
-        T = np.shape(o)[0] # number of timestamps
+        K = log_b.shape[0] # number of states
+        T = o.shape[0] # number of timestamps
 
         log_beta = np.zeros((T, K))
         # We don't need to specify the log_beta[t-1, :] since we have set to zero.
@@ -71,8 +71,8 @@ class BasicHMM():
         return log_xi (K * K * T)
         """
 
-        K = np.shape(log_b)[0] # number of states
-        T = np.shape(o)[0] # number of timestamps
+        K = log_b.shape[0] # number of states
+        T = o.shape[0] # number of timestamps
 
         log_xi = np.zeros((K, K, T))
 
@@ -114,7 +114,7 @@ class BasicHMM():
 
     def m_step(self, log_si, log_gamma, o):
 
-        T = np.shape(o)[0] # number of timestamps
+        T = o.shape[0] # number of timestamps
         C = len(np.unique(o)) # number of choices
 
         log_pi_hat = log_gamma[:, 0]
@@ -132,7 +132,7 @@ class BasicHMM():
         return log_a_hat, log_b_hat, log_pi_hat
 
     def set_inputs(self, o, rand_seed = 0):
-        T = np.shape(o)[0] # number of timestamps
+        T = o.shape[0] # number of timestamps
         C = len(np.unique(o)) # number of choices
 
         np.random.seed(rand_seed)
@@ -186,8 +186,6 @@ class MixtureHMM(BasicHMM):
     Feature 1: deal with multiple sequences with same number of time stamps.
     Feature 2: deal with multiple choice models.
     """
-    #TODO: add std
-
     def _forward(self, log_a, log_choice_prob, log_pi):
         """
         return log_alpha
@@ -198,8 +196,8 @@ class MixtureHMM(BasicHMM):
         :type log_choice_prob: numpy array
         :param log_pi: log of initial matrix prob
         """
-        T = np.shape(log_choice_prob)[0] # number of timestamps
-        K = np.shape(log_choice_prob)[1] # number of states
+        T = log_choice_prob.shape[0] # number of timestamps
+        K = log_choice_prob.shape[1] # number of states
 
         log_alpha = np.zeros((T, K))
 
@@ -220,8 +218,8 @@ class MixtureHMM(BasicHMM):
 
     def _backward(self, log_a, log_choice_prob):
 
-        T = np.shape(log_choice_prob)[0] # number of timestamps
-        K = np.shape(log_choice_prob)[1] # number of states
+        T = log_choice_prob.shape[0] # number of timestamps
+        K = log_choice_prob.shape[1] # number of states
 
         log_beta = np.zeros((T, K))
         # We don't need to specify the log_beta[t-1, :] since we have set to zero.
@@ -267,8 +265,8 @@ class MixtureHMM(BasicHMM):
         xi(q_t, q_t+1) = P(q_t, q_t+1|y)
         """
 
-        T = np.shape(log_choice_prob)[0] # number of timestamps
-        K = np.shape(log_choice_prob)[1] # number of states
+        T = log_choice_prob.shape[0] # number of timestamps
+        K = log_choice_prob.shape[1] # number of states
 
         log_xi = np.zeros((K, K, T))
 
@@ -288,8 +286,8 @@ class MixtureHMM(BasicHMM):
         :param o: (T, num_of_choice_models)
         :param log_b: (num_of_choice_models * (K * num_of_choices in each choice model))
         """
-        T = np.shape(o)[0]
-        num_of_choice_models = np.shape(o)[1]
+        T = o.shape[0]
+        num_of_choice_models = o.shape[1]
         log_choice_prob = np.zeros((T, self.num_states))
         for t in range(T):
             for i in range(self.num_states):
@@ -358,8 +356,8 @@ class MixtureHMM(BasicHMM):
         # Initialization
         self.obs_seq = obs_seq
         self.num_seq = len(obs_seq)
-        self.num_timesteps = np.shape(self.obs_seq[0])[0]
-        self.num_choice_models = np.shape(self.obs_seq[0])[1]
+        self.num_timesteps = self.obs_seq[0].shape[0]
+        self.num_choice_models = self.obs_seq[0].shape[1]
         self.num_choices = [max(len(np.unique(self.obs_seq[i][:, c])) for i in range(self.num_seq)) for c in range(self.num_choice_models)]
         self.log_a, self.log_b, self.log_pi = self.initialize()
         logger.info("The initial values are:")
@@ -412,8 +410,8 @@ class HeteroMixtureHMM(MixtureHMM):
         log_choice_prob: np (T, num of states)
         log_pi: log of initial matrix prob (num of states, )
         """
-        T = np.shape(log_choice_prob)[0] # number of timestamps
-        K = np.shape(log_choice_prob)[1] # number of states
+        T = log_choice_prob.shape[0] # number of timestamps
+        K = log_choice_prob.shape[1] # number of states
         log_alpha = np.zeros((T, K))
 
         # alpha(q_0)
@@ -436,8 +434,8 @@ class HeteroMixtureHMM(MixtureHMM):
         log_choice_prob: np (T, num of states)
         log_pi: log of initial matrix prob (num of states, )
         """
-        T = np.shape(log_choice_prob)[0] # number of timestamps
-        K = np.shape(log_choice_prob)[1] # number of states
+        T = log_choice_prob.shape[0] # number of timestamps
+        K = log_choice_prob.shape[1] # number of states
 
         log_beta = np.zeros((T, K))
         # We don't need to specify the log_beta[T, :] since we have set to zero.
@@ -455,8 +453,8 @@ class HeteroMixtureHMM(MixtureHMM):
         xi(q_t, q_t+1) = P(q_t, q_t+1|y)
         """
 
-        T = np.shape(log_choice_prob)[0] # number of timestamps
-        K = np.shape(log_choice_prob)[1] # number of states
+        T = log_choice_prob.shape[0] # number of timestamps
+        K = log_choice_prob.shape[1] # number of states
 
         log_xi = np.zeros((K, K, T))
 
@@ -501,7 +499,7 @@ class HeteroMixtureHMM(MixtureHMM):
         self.log_gammas = []
         self.log_lls = []
 
-        # Calculate log_b
+        ### Calculate log_b
         # log_b: (num_of_choice_models * (K * num_of_choices in each choice model))
         log_b = []
         for c in range(self.num_choice_models):
@@ -512,18 +510,18 @@ class HeteroMixtureHMM(MixtureHMM):
 
         for i, obs in enumerate(self.obs_seq):
 
-            # Calculate the transition log_prob
+            ### Calculate the transition log_prob
             # trans_X[i]: (T, num of covariates)
             # log_trans_prob: (num of states, T, num of states)
             log_trans_prob = np.zeros((self.num_states, self.num_timesteps, self.num_states))
             for i in range(self.num_states):
                 log_trans_prob[i, :, :] = self.trans_models[i].predict_log_proba(self.trans_X[i])
 
-            # Calculate the emission matrix (log_prob)
+            ### Calculate the emission matrix (log_prob)
             # log_choice_prob: (T, num of states)
             log_choice_prob = self.cal_log_prob_choices(log_b=log_b, o=obs)
 
-            # forward backward
+            ### forward backward
             log_si, log_gamma, log_ll = self._forward_backward(log_trans_prob=log_trans_prob,
                                                               log_choice_prob=log_choice_prob,
                                                               log_pi=self.log_pi)
@@ -549,13 +547,19 @@ class HeteroMixtureHMM(MixtureHMM):
             for c in range(self.num_choice_models):
                 # X actually represents constant.
                 X = np.ones((self.num_seq * self.num_timesteps, 1))
+
                 # y: np (T * self.num_seq, )
                 y = np.hstack([self.obs_seq[i][:, c] for i in range(self.num_seq)])
-                assert y.shape == (self.num_timesteps * self.num_seq, ), "The shape of choice variable is wrong!"
+                assert y.shape == (self.num_timesteps * self.num_seq, ), \
+                    "The shape of choice variable is wrong!"
+
                 sample_weight = np.exp(np.hstack([log_gamma[i, :] for log_gamma in self.log_gammas]))
                 self.choice_models[i][c].fit(X, y, sample_weight)
 
     def initialize(self):
+        """initialize each parameters."""
+
+        # For deterministic result, set rand_seed here. Also for LinearModels.py
         # np.random.seed(rand_seed)
 
         # initial matrix
@@ -595,8 +599,10 @@ class HeteroMixtureHMM(MixtureHMM):
         trans_X = []
 
         for sample in samples:
-            obs_seq.append(sample[:, [header.index(name) for name in choices]].astype(int))
-            trans_X.append(sample[:, [header.index(name) for name in trans_cov]])
+            obs_seq.append(sample[:, [header.index(name)
+                                      for name in choices]].astype(int))
+            trans_X.append(sample[:, [header.index(name)
+                                      for name in trans_cov]])
 
         self.obs_seq, self.trans_X = obs_seq, trans_X
         self.set_dataframe_flag = True
@@ -627,12 +633,15 @@ class HeteroMixtureHMM(MixtureHMM):
         self.num_trans_covariates = self.trans_X[0].shape[1]
         self.num_timesteps = self.obs_seq[0].shape[0]
         self.num_choice_models = self.obs_seq[0].shape[1]
-        self.num_choices = [max(len(np.unique(self.obs_seq[i][:, c])) for i in range(self.num_seq)) for c in range(self.num_choice_models)]
+        self.num_choices = [max(len(np.unique(self.obs_seq[i][:, c]))
+                                for i in range(self.num_seq)) for c in range(self.num_choice_models)]
 
         # Initialization
         self.trans_models, self.choice_models, self.log_pi = self.initialize()
         logger.info("The initial values are:")
-        self.print_results(trans_models=self.trans_models, choice_models=self.choice_models, log_pi=self.log_pi)
+        self.print_results(trans_models=self.trans_models,
+                           choice_models=self.choice_models,
+                           log_pi=self.log_pi)
 
         # Start training
         self.e_step()
