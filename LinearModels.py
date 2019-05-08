@@ -5,9 +5,6 @@ import logging
 __author__ = "Mengqiao Yu"
 __email__ = "mengqiao.yu@berkeley.edu"
 
-logger = logging.getLogger()
-logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
-
 class TransitionModel():
     """Variant of Multinomial Logit Model"""
 
@@ -24,23 +21,27 @@ class TransitionModel():
                                         fit_intercept=self.intercept_fit,
                                         warm_start=True)
 
+        # Trick: initialize covariates as zero (for first e_step).
+        self.model.fit(np.ones((num_classes, num_covariates)),
+                       np.arange(num_classes))
+
     def _data_formatter(self, X, y):
         """
         reformat/augment data matrix to fit multinomial logit model with prob output.
         Parameters
         ----------
-        X: np array (num of obs , num of covariates)
-        y: np array (num of obs , num of classes)
+        X: np array (num_seq * T , num of covariates)
+        y: np array (num_seq * T , num of states)
         Returns
         ----------
-        X_augmented: (num of obs * num of classes, num of covariates)
-        y_augmented: (num of obs * num of classes, )
-        sample_weight: (num of obs * num of classes, )
+        X_augmented: (num_seq * T * num of states, num of covariates)
+        y_augmented: (num_seq * T * num of states, )
+        sample_weight: (num of obs * num of states, )
         """
-
-        num_obs, num_classes = X.shape[0], y.shape[1]
-        X_augmented = np.repeat(X, num_classes, axis=0)
-        y_augmented = np.tile(np.arange(num_classes), num_obs)
+        X = np.vstack(X)
+        num_obs, num_states = X.shape[0], y.shape[1]
+        X_augmented = np.repeat(X, num_states, axis=0)
+        y_augmented = np.tile(np.arange(num_states), num_obs)
         sample_weight = y.reshape(-1, )
 
         return X_augmented, y_augmented, sample_weight
@@ -59,11 +60,4 @@ class TransitionModel():
     def get_params(self):
         return np.concatenate((
             self.model.intercept_.reshape(self.model.intercept_.shape[0],1),
-            self.model.coef_))
-
-
-
-
-
-
-
+            self.model.coef_), axis=1)
