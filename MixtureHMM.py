@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.misc import logsumexp
-from LinearModels import TransitionModel
+from LinearModels import TransitionModel, LogitChoiceModel
 import logging
 
 __author__ = "Mengqiao Yu"
@@ -500,6 +500,16 @@ class HeteroMixtureHMM(MixtureHMM):
         self.log_sis = []
         self.log_gammas = []
         self.log_lls = []
+
+        # Calculate log_b
+        # log_b: (num_of_choice_models * (K * num_of_choices in each choice model))
+        log_b = []
+        for c in range(self.num_choice_models):
+            # c represents one choice model
+            log_b_c = np.vstack([self.choice_models[i][c].predict_log_proba(1)
+                                        for i in range(self.num_states)])
+            log_b.append(log_b_c)
+
         for i, obs in enumerate(self.obs_seq):
 
             # Calculate the transition log_prob
@@ -511,7 +521,7 @@ class HeteroMixtureHMM(MixtureHMM):
 
             # Calculate the emission matrix (log_prob)
             # log_choice_prob: (T, num of states)
-            log_choice_prob = self.cal_log_prob_choices(log_b=self.log_b, o=obs)
+            log_choice_prob = self.cal_log_prob_choices(log_b=log_b, o=obs)
 
             # forward backward
             log_si, log_gamma, log_ll = self._forward_backward(log_trans_prob=log_trans_prob,
@@ -530,23 +540,20 @@ class HeteroMixtureHMM(MixtureHMM):
 
         for i in range(self.num_states):
 
-            # re-estimate transition matrix
+            # re-estimate transition model
             # y: np (T * self.num_seq, num_states)
             y = np.exp(np.vstack([log_si[i, :, :].T for log_si in self.log_sis]))
             self.trans_models[i].fit(self.trans_X, y)
 
-            # calculate log_b: emission matrix for each choice model
+            # re-estimate choice models
             for c in range(self.num_choice_models):
-                for k in range(self.num_choices[c]):
-                    sum_gamma_y = 0
-                    sum_gamma = 0
-                    for s in range(self.num_seq):
-                        try:
-                            sum_gamma_y += np.sum(np.exp(self.log_gammas[s][i, (self.obs_seq[s][:, c] == k).nonzero()[0]]))
-                        except ValueError:
-                            pass
-                        sum_gamma += np.sum(np.exp(self.log_gammas[s][i, :self.num_timesteps]))
-                    self.log_b[c][i, k] = np.log(sum_gamma_y) - np.log(sum_gamma)
+                # X actually represents constant.
+                X = np.ones((self.num_seq * self.num_timesteps, 1))
+                # y: np (T * self.num_seq, )
+                y = np.hstack([self.obs_seq[i][:, c] for i in range(self.num_seq)])
+                assert y.shape == (self.num_timesteps * self.num_seq, ), "The shape of choice variable is wrong!"
+                sample_weight = np.exp(np.hstack([log_gamma[i, :] for log_gamma in self.log_gammas]))
+                self.choice_models[i][c].fit(X, y, sample_weight)
 
     def initialize(self):
         # np.random.seed(rand_seed)
@@ -557,18 +564,19 @@ class HeteroMixtureHMM(MixtureHMM):
         # transition model
         trans_models = []
         for i in range(self.num_states):
-            trans_model = TransitionModel(num_classes=self.num_states,
+            trans_model = TransitionModel(num_states=self.num_states,
                                           num_covariates=self.num_trans_covariates)
             trans_models.append(trans_model)
 
-        # emission matrix
-        log_b = []
-        for c in range(self.num_choice_models):
-            # c represents one choice model
-            log_b_c = np.log(np.random.dirichlet(np.ones(self.num_choices[c]), size=self.num_states))
-            log_b.append(log_b_c)
+        # choice models
+        # choice_models is a list of list of models: (num_states, num_choice_models)
+        choice_models = []
+        for i in range(self.num_states):
+            choice_model = [LogitChoiceModel(num_choices=self.num_choices[c])
+                            for c in range(self.num_choice_models)]
+            choice_models.append(choice_model)
 
-        return trans_models, log_b, log_pi
+        return trans_models, choice_models, log_pi
 
     def set_dataframe(self, samples, header = [], choices = [], trans_cov=[]):
         """
@@ -593,7 +601,7 @@ class HeteroMixtureHMM(MixtureHMM):
         self.obs_seq, self.trans_X = obs_seq, trans_X
         self.set_dataframe_flag = True
 
-    def print_results(self, trans_models, log_b, log_pi):
+    def print_results(self, trans_models, choice_models, log_pi):
         logger.info("\tHere is the initial matrix:")
         logger.info(np.exp(log_pi))
 
@@ -602,9 +610,13 @@ class HeteroMixtureHMM(MixtureHMM):
             logger.info("This the transition model for state %d" %(i+1))
             logger.info(self.trans_models[i].get_params())
 
-        for i in range(self.num_states):
-            logger.info("\tHere is the emission matrix for state %d:" %(i+1))
-            logger.info(np.exp(log_b[i]))
+        for c in range(self.num_choice_models):
+            logger.info("For choice model %d" %c)
+            for i in range(self.num_states):
+                logger.info("\tHere is estimates for state %d:" %(i+1))
+                coef, prob = self.choice_models[i][c].get_params()
+                logger.info(coef)
+                logger.info(prob)
 
     def train(self, cutoff_value, max_iter):
 
@@ -612,15 +624,15 @@ class HeteroMixtureHMM(MixtureHMM):
 
         # Basic information
         self.num_seq = len(self.obs_seq)
-        self.num_trans_covariates = np.shape(self.trans_X[0])[1]
-        self.num_timesteps = np.shape(self.obs_seq[0])[0]
-        self.num_choice_models = np.shape(self.obs_seq[0])[1]
+        self.num_trans_covariates = self.trans_X[0].shape[1]
+        self.num_timesteps = self.obs_seq[0].shape[0]
+        self.num_choice_models = self.obs_seq[0].shape[1]
         self.num_choices = [max(len(np.unique(self.obs_seq[i][:, c])) for i in range(self.num_seq)) for c in range(self.num_choice_models)]
 
         # Initialization
-        self.trans_models, self.log_b, self.log_pi = self.initialize()
+        self.trans_models, self.choice_models, self.log_pi = self.initialize()
         logger.info("The initial values are:")
-        self.print_results(trans_models=self.trans_models, log_b=self.log_b, log_pi=self.log_pi)
+        self.print_results(trans_models=self.trans_models, choice_models=self.choice_models, log_pi=self.log_pi)
 
         # Start training
         self.e_step()
@@ -641,12 +653,15 @@ class HeteroMixtureHMM(MixtureHMM):
             # Print progress during estimation
             if i % 10 == 1:
                 logger.info("\tThis is %d iteration, ll = %s." %(i, after_ll))
-                self.print_results(trans_models=self.trans_models, log_b=self.log_b, log_pi=self.log_pi)
-                # import pdb;pdb.set_trace()
+                self.print_results(trans_models=self.trans_models,
+                                   choice_models=self.choice_models,
+                                   log_pi=self.log_pi)
 
         # Print final results
         logger.info("\tThe estimation results are:")
-        self.print_results(trans_models=self.trans_models, log_b=self.log_b, log_pi=self.log_pi)
+        self.print_results(trans_models=self.trans_models,
+                           choice_models=self.choice_models,
+                           log_pi=self.log_pi)
 
         logger.info("-----------------------THE END-----------------------")
 
