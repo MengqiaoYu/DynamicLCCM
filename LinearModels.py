@@ -8,22 +8,20 @@ __email__ = "mengqiao.yu@berkeley.edu"
 class TransitionModel():
     """Variant of Multinomial Logit Model"""
 
-    def __init__(self, intercept_fit=True, std_fit=True, num_classes=2, num_covariates=0):
+    def __init__(self, intercept_fit=True, std_fit=True, num_states=2, num_covariates=0):
         """
         :param X_data: (num of obs, num of covariates)
-        :param y_data: (num of obs, num of classes) in prob but not discrete choice
+        :param y_data: (num of obs, num of states) in prob but not discrete choice
         """
         self.intercept_fit = intercept_fit
         self.std_fit = std_fit
-        self.num_classes = num_classes
-        self.num_covariates = num_covariates
         self.model = LogisticRegression(solver='lbfgs',
                                         fit_intercept=self.intercept_fit,
                                         warm_start=True)
 
         # Trick: initialize covariates as zero (for first e_step).
-        self.model.fit(np.ones((num_classes, num_covariates)),
-                       np.arange(num_classes))
+        self.model.fit(np.ones((num_states, num_covariates)),
+                       np.arange(num_states))
 
     def _data_formatter(self, X, y):
         """
@@ -48,8 +46,8 @@ class TransitionModel():
 
     def fit(self, X, y):
         """estimate covariates in transition model"""
-        num_classes = y.shape[1]
-        multi_class = 'multinomial' if num_classes >= 3 else 'ovr'
+        num_states = y.shape[1]
+        multi_class = 'multinomial' if num_states >= 3 else 'ovr'
         self.model.multi_class = multi_class
         X_new, y_new, sample_weight = self._data_formatter(X, y)
         self.model.fit(X_new, y_new, sample_weight=sample_weight)
@@ -61,3 +59,29 @@ class TransitionModel():
         return np.concatenate((
             self.model.intercept_.reshape(self.model.intercept_.shape[0],1),
             self.model.coef_), axis=1)
+
+
+class LogitChoiceModel():
+    """Binary or Multinomial Logit Model"""
+
+    def __init__(self, intercept_fit=False, std_fit=True, num_choices=2, num_covariates=1):
+        self.std_fit = std_fit
+        self.model = LogisticRegression(solver='lbfgs',
+                                        fit_intercept=intercept_fit,
+                                        warm_start=True)
+
+        # Trick: initialize covariates based on random sample on prob.
+        init_prob = np.random.dirichlet(np.ones(num_choices), size=1)
+        init_sample = (init_prob * 1000).astype(int)
+        self.model.fit(np.ones((np.sum(init_sample), num_covariates)),
+                       np.repeat(np.arange(num_choices), init_sample.reshape(-1), axis = 0))
+
+    def fit(self, X, y, sample_weight):
+        self.model.fit(X, y, sample_weight)
+
+    def predict_log_proba(self, X):
+        return self.model.predict_log_proba(X)
+
+    def get_params(self):
+        return self.model.coef_, self.model.predict_proba(1)
+
