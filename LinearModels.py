@@ -1,6 +1,5 @@
 from sklearn.linear_model import LogisticRegression
 import numpy as np
-import logging
 
 __author__ = "Mengqiao Yu"
 __email__ = "mengqiao.yu@berkeley.edu"
@@ -8,10 +7,11 @@ __email__ = "mengqiao.yu@berkeley.edu"
 class TransitionModel():
     """Variant of Multinomial Logit Model"""
 
-    def __init__(self, intercept_fit=True, std_fit=True, num_states=2, num_covariates=0):
+    def __init__(self, intercept_fit=False, std_fit=True, num_states=2, num_covariates=0):
         """
-        :param X_data: (num of obs, num of covariates)
-        :param y_data: (num of obs, num of states) in prob but not discrete choice
+        Parameters
+        ----------
+        num_covariates doesn't include constant.
         """
         self.intercept_fit = intercept_fit
         self.std_fit = std_fit
@@ -20,7 +20,7 @@ class TransitionModel():
                                         warm_start=True)
 
         # Trick: initialize covariates as zero (for first e_step).
-        self.model.fit(np.ones((num_states, num_covariates)),
+        self.model.fit(np.ones((num_states, num_covariates + 1)),
                        np.arange(num_states))
 
     def _data_formatter(self, X, y):
@@ -29,20 +29,25 @@ class TransitionModel():
         Parameters
         ----------
         X: np array (num_seq * T , num of covariates)
-        y: np array (num_seq * T , num of states)
+        y: np array (num_seq * T , num of states) in prob but not discrete choice!
         Returns
         ----------
-        X_augmented: (num_seq * T * num of states, num of covariates)
+        X_augmented: (num_seq * T * num of states, num of covariates + 1)
         y_augmented: (num_seq * T * num of states, )
         sample_weight: (num of obs * num of states, )
         """
         X = np.vstack(X)
         num_obs, num_states = X.shape[0], y.shape[1]
         X_augmented = np.repeat(X, num_states, axis=0)
+        X_augmented = self._add_constant(X_augmented)
         y_augmented = np.tile(np.arange(num_states), num_obs)
         sample_weight = y.reshape(-1, )
 
         return X_augmented, y_augmented, sample_weight
+
+    def _add_constant(self, X):
+        """add constant to the first column"""
+        return np.hstack((np.ones((X.shape[0], 1)), X))
 
     def fit(self, X, y):
         """estimate covariates in transition model"""
@@ -53,12 +58,11 @@ class TransitionModel():
         self.model.fit(X_new, y_new, sample_weight=sample_weight)
 
     def predict_log_proba(self, X):
+        X = self._add_constant(X)
         return self.model.predict_log_proba(X)
 
     def get_params(self):
-        return np.concatenate((
-            self.model.intercept_.reshape(self.model.intercept_.shape[0],1),
-            self.model.coef_), axis=1)
+        return self.model.coef_ # The first value is intercept
 
 
 class LogitChoiceModel():
@@ -83,5 +87,6 @@ class LogitChoiceModel():
         return self.model.predict_log_proba(X)
 
     def get_params(self):
+        """Return both the coefficients and probability"""
         return self.model.coef_, self.model.predict_proba(1)
 
