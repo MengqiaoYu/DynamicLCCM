@@ -595,7 +595,7 @@ class HeteroMixtureHMM(MixtureHMM):
         trans_X = []
 
         for sample in samples:
-            obs_seq.append(sample[:, [header.index(name) for name in choices]])
+            obs_seq.append(sample[:, [header.index(name) for name in choices]].astype(int))
             trans_X.append(sample[:, [header.index(name) for name in trans_cov]])
 
         self.obs_seq, self.trans_X = obs_seq, trans_X
@@ -611,7 +611,7 @@ class HeteroMixtureHMM(MixtureHMM):
             logger.info(self.trans_models[i].get_params())
 
         for c in range(self.num_choice_models):
-            logger.info("For choice model %d" %c)
+            logger.info("For choice model %d" %(c+1))
             for i in range(self.num_states):
                 logger.info("\tHere is estimates for state %d:" %(i+1))
                 coef, prob = self.choice_models[i][c].get_params()
@@ -651,8 +651,9 @@ class HeteroMixtureHMM(MixtureHMM):
             before_ll = after_ll
 
             # Print progress during estimation
-            if i % 10 == 1:
-                logger.info("\tThis is %d iteration, ll = %s." %(i, after_ll))
+            logger.info("\tThis is %d iteration, ll = %s." %(i, after_ll))
+
+            if i % 50 == 1:
                 self.print_results(trans_models=self.trans_models,
                                    choice_models=self.choice_models,
                                    log_pi=self.log_pi)
