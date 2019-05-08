@@ -1,7 +1,6 @@
 import numpy as np
 from hmmlearn import hmm
 import MixtureHMM
-import logging
 from os import listdir
 import pandas as pd
 
@@ -67,4 +66,6 @@ def train_hetero():
                        trans_cov=trans_cov)
     HHMM.train(cutoff_value=1e-3, max_iter=200)
 
-train_hetero()
+if __name__ == '__main__':
+    # train_mixture()
+    train_hetero()
