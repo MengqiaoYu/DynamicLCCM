@@ -189,13 +189,14 @@ class MixtureHMM(BasicHMM):
     def _forward(self, log_a, log_choice_prob, log_pi):
         """
         return log_alpha
-        :param log_a: log of transition matrix prob (K * K)
-        :type log_a: numpy array
-        :param log_choice_prob: log of all emission probs from state i at timestamp t
-                                logP(y_1) + logP(y_2) (T * K)
-        :type log_choice_prob: numpy array
-        :param log_pi: log of initial matrix prob
+        Parameters
+        ----------
+        log_a: log of transition matrix prob (K * K), np
+        log_choice_prob: log of all emission probs from state i at timestamp t
+                        logP(y_1) + logP(y_2) (T * K), np
+        log_pi: log of initial matrix prob
         """
+
         T = log_choice_prob.shape[0] # number of timestamps
         K = log_choice_prob.shape[1] # number of states
 
@@ -208,6 +209,7 @@ class MixtureHMM(BasicHMM):
         for t in range(1, T):
             log_alpha[t, :] = logsumexp(log_alpha[t-1, :] + log_a.T, axis=1) \
                               + log_choice_prob[t, :]
+
         # Here is the detailed version, slower.
         # for t in range(1, T):
         #     for i in range(K):
@@ -217,6 +219,14 @@ class MixtureHMM(BasicHMM):
         return log_alpha
 
     def _backward(self, log_a, log_choice_prob):
+        """
+        return log_beta
+        Parameters
+        ----------
+        log_a: log of transition matrix prob (K * K), numpy array, np
+        log_choice_prob: log of all emission probs from state i at timestamp t
+                        logP(y_1) + logP(y_2) (T * K), np
+        """
 
         T = log_choice_prob.shape[0] # number of timestamps
         K = log_choice_prob.shape[1] # number of states
@@ -234,6 +244,12 @@ class MixtureHMM(BasicHMM):
     def _forward_backward(self, log_a, log_choice_prob, log_pi):
         """
         E step
+        Parameters
+        ----------
+        log_a: log of transition matrix prob (K * K), np
+        log_choice_prob: log of all emission probs from state i at timestamp t
+                        logP(y_1) + logP(y_2) (T * K), np
+        log_pi: log of initial matrix prob
         """
 
         # Clear check with benchmark
