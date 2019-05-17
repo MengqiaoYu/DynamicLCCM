@@ -22,12 +22,15 @@ class TransitionModel():
                                         warm_start=True)
 
         # Trick: initialize covariates as zero (for first e_step).
-        self.model.fit(np.ones((self.num_states, num_covariates + 1)),
+        # self.model.fit(np.ones((self.num_states, num_covariates + 1)),
+        #                np.arange(self.num_states))        
+        self.model.fit(np.random.rand(self.num_states,num_covariates + 1),
                        np.arange(self.num_states))
 
     def _data_formatter(self, X, y):
         """
-        reformat/augment data matrix to fit multinomial logit model with prob output.
+        augment data matrix to fit multinomial logit model with prob output.
+
         Parameters
         ----------
         X: np array (num_seq * T , num of covariates)
@@ -38,6 +41,7 @@ class TransitionModel():
         y_augmented: (num_seq * T * num of states, ) as discrete choice
         sample_weight: (num of obs * num of states, )
         """
+
         X = np.vstack(X)
         num_obs, num_states = X.shape[0], y.shape[1]
         X_augmented = np.repeat(X, num_states, axis=0)
@@ -48,19 +52,27 @@ class TransitionModel():
         return X_augmented, y_augmented, sample_weight
 
     def _add_constant(self, X):
-        """add constant to the first column"""
+        """
+        add constant to the first column
+        """
         return np.hstack((np.ones((X.shape[0], 1)), X))
 
     def fit(self, X, y):
         """
         estimate covariates in transition model
+
         Parameters
         ----------
-        X: np array (num_seq * T , num of covariates)
-        y: np array (num_seq * T , num of states) in prob.
-        self.X: (num_seq * T * num of states, num of covariates + 1)
-        self.y: (num_seq * T * num of states, ) as discrete choice.
-        self.sample_weight: (num of obs * num of states, )
+        X: ndarray
+            (num_seq * T , num of covariates)
+        y: ndarray
+            (num_seq * T , num of states) in prob.
+        self.X: ndarray
+                (num_seq * T * num of states, num of covariates + 1)
+        self.y: ndarray
+                (num_seq * T * num of states, ) as discrete choice.
+        self.sample_weight: ndarray
+                            (num of obs * num of states, )
         """
         num_states = y.shape[1]
         multi_class = 'multinomial' if num_states >= 3 else 'ovr'
@@ -69,15 +81,23 @@ class TransitionModel():
         self.model.fit(self.X, self.y, sample_weight=self.sample_weight)
 
     def predict_log_proba(self, X):
-        """For external use, for example, calculate the trend."""
+        """
+        For external use, for example, calculate the trend.
+        """
         X = self._add_constant(X)
         return self.model.predict_log_proba(X)
 
     def get_params(self):
+        """
+        For external use, get coefficient of parameters
+        """
+
         if self.num_states == 2:
+            # For binary case, the first state coefficients are set to zero.
             return self.model.coef_ # The first value is intercept
         if self.num_states >= 3:
-            # The first state is the base.
+            # For multinomial case, the constraint is the sum of coef is zero.
+            # We arbitrarily set the first state is the base.
             return self.model.coef_[1:] - self.model.coef_[0]
 
     def get_std(self):
@@ -110,7 +130,7 @@ class TransitionModel():
 
             std = np.sqrt(np.diag(cov_matrix))
             z_scores = self.model.coef_/std
-            p_values = np.array([stat.norm.sf(abs(z)) * 2 for z in z_scores])
+            p_values = np.array([stat.norm.sf(abs(z)) for z in z_scores])
 
         if self.num_states >= 3:
             # predProbs: (num_seq * T * num of states, num of states)
@@ -122,6 +142,7 @@ class TransitionModel():
             # Calculate variance-covariance matrix
             for i in range(self.num_states):
                 for j in range(self.num_states):
+                    # block by block
                     if i == j:
                         W_i_j = np.diag(np.multiply(predProbs[:, i]
                                                     * (1.0 - predProbs[:, i]),
@@ -139,7 +160,7 @@ class TransitionModel():
                                        num_covariates:])
             std = np.sqrt(np.diag(cov_matrix))
             z_scores = self.model.coef_.flatten()[num_covariates:, ]/std
-            p_values = np.array([stat.norm.sf(abs(z))*2 for z in z_scores])
+            p_values = np.array([stat.norm.sf(abs(z)) for z in z_scores])
 
         return std.reshape((self.num_states - 1, -1)), \
                p_values.reshape((self.num_states - 1, -1))
@@ -151,6 +172,7 @@ class LogitChoiceModel():
                  std_fit=True,
                  num_choices=2,
                  num_covariates=1):
+
         self.std_fit = std_fit
         self.num_choices = num_choices
         self.model = LogisticRegression(solver='lbfgs',
@@ -175,15 +197,29 @@ class LogitChoiceModel():
         return self.model.predict_log_proba(X)
 
     def get_params(self):
-        """Return both the coefficients and probability"""
+        """
+        For external use.
+        Return both the coefficients and probability of each alternative.
+        Notes
+        -----
+        If num_covariates is not 1, i.e., there are covariates associated with
+        that choice model, please do NOT use self.model.predict_proba(1), and
+        use self.model.predict_proba(X) instead.
+        """
+
         if self.num_choices == 2:
+            # For binary case, the first state coefficients are set to zero.
             return self.model.coef_, self.model.predict_proba(1)
         if self.num_choices >= 3:
-            return self.model.coef_[1:], self.model.predict_proba(1)
+            # For multinomial case, the constraint is the sum of coef is zero.
+            # We arbitrarily set the first state is the base.
+            return self.model.coef_[1:] - self.model.coef_[0], \
+                   self.model.predict_proba(1)
 
     def get_std(self):
         """
         Calculate standard errors at the last step to save time.
+
         Returns:
         ----------
         std: standard error of each coefficient.
@@ -210,7 +246,7 @@ class LogitChoiceModel():
 
             std = np.sqrt(np.diag(cov_matrix))
             z_scores = self.model.coef_/std
-            p_values = np.array([stat.norm.sf(abs(z)) * 2 for z in z_scores])
+            p_values = np.array([stat.norm.sf(abs(z)) for z in z_scores])
 
         if self.num_choices >= 3:
             # predProbs: (num_seq * T * num of states, num of states)
