@@ -1,8 +1,10 @@
-import numpy as np
-from scipy.misc import logsumexp
-from ChoiceModels import TransitionModel, LogitChoiceModel
 import logging
 from datetime import datetime
+
+import numpy as np
+from scipy.misc import logsumexp
+
+from ChoiceModels import TransitionModel, LogitChoiceModel
 
 __author__ = "Mengqiao Yu"
 __email__ = "mengqiao.yu@berkeley.edu"
@@ -977,30 +979,33 @@ class HeteroMixtureHMM(MixtureHMM):
                 set to True at the last step to calculate standard error and p value.
         """
 
+        def print_array(x, num_indent):
+            return str(x).replace('\n','\n' + '\t' * num_indent)
+
         float_formatter = lambda x: "%.3f" % x
         np.set_printoptions(formatter={'float_kind':float_formatter})
 
         logger.info("\tHere is the initial matrix:")
-        logger.info("\t\t", np.exp(log_pi), '\n')
+        logger.info("\t\t" + print_array(np.exp(log_pi), 2) + '\n')
 
         logger.info("\tHere is the transition model:")
         for i in range(self.num_states):
             logger.info("\t\tThis is the transition model for state %d" %(i+1))
-            logger.info("\t\t\t", self.trans_models[i].get_params())
+            logger.info("\t\t\t" + print_array(self.trans_models[i].get_params(), 3))
             if print_std:
                 std, p = self.trans_models[i].get_std()
-                logger.info("\t\t\t", p, '\n')
+                logger.info("\t\t\t" + print_array(p, 3) + '\n')
 
         for c in range(self.num_choice_models):
             logger.info("\tFor choice model %d" %(c+1))
             for i in range(self.num_states):
                 logger.info("\t\tHere is estimates for state %d:" %(i+1))
                 coef, prob = self.choice_models[i][c].get_params()
-                logger.info("\t\t\t", coef)
-                logger.info("\t\t\t", prob)
+                logger.info("\t\t\t" + print_array(coef, 3))
+                logger.info("\t\t\t" + print_array(prob, 3))
                 if print_std:
                     std, p = self.choice_models[i][c].get_std()
-                    logger.info("\t\t\t", p, '\n')
+                    logger.info("\t\t\t" + print_array(p, 3) + '\n')
 
     def train(self, cutoff_value, max_iter):
         """
@@ -1028,10 +1033,10 @@ class HeteroMixtureHMM(MixtureHMM):
 
         # Initialization
         self.trans_models, self.choice_models, self.log_pi = self.initialize()
-        self.print_results(trans_models=self.trans_models,
-                           choice_models=self.choice_models,
-                           log_pi=self.log_pi,
-                           print_std=False)
+        # self.print_results(trans_models=self.trans_models,
+        #                    choice_models=self.choice_models,
+        #                    log_pi=self.log_pi,
+        #                    print_std=False)
 
         # Start training
         logger.info("Start training:")
