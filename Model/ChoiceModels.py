@@ -1,6 +1,6 @@
+import numpy as np
 from sklearn.linear_model import LogisticRegression
 import scipy.stats as stat
-import numpy as np
 
 __author__ = "Mengqiao Yu"
 __email__ = "mengqiao.yu@berkeley.edu"
@@ -8,14 +8,17 @@ __email__ = "mengqiao.yu@berkeley.edu"
 class TransitionModel():
     """Variant of Multinomial Logit Model"""
 
-    def __init__(self, intercept_fit=False, std_fit=True, num_states=2, num_covariates=0):
+    def __init__(self,
+                 intercept_fit=False,
+                 num_states=2,
+                 num_covariates=0):
         """
-        Parameters
-        ----------
+        Notes
+        -----
         num_covariates doesn't include constant.
         """
+
         self.intercept_fit = intercept_fit
-        self.std_fit = std_fit
         self.num_states = num_states
         self.model = LogisticRegression(solver='lbfgs',
                                         fit_intercept=self.intercept_fit,
@@ -169,11 +172,14 @@ class LogitChoiceModel():
     """Binary or Multinomial Logit Model"""
 
     def __init__(self, intercept_fit=False,
-                 std_fit=True,
                  num_choices=2,
                  num_covariates=1):
+        """
+        Notes
+        -----
+        num_covariates include constant since X is specified as np.ones.
+        """
 
-        self.std_fit = std_fit
         self.num_choices = num_choices
         self.model = LogisticRegression(solver='lbfgs',
                                         fit_intercept=intercept_fit,
@@ -182,8 +188,12 @@ class LogitChoiceModel():
         # Trick: initialize covariates based on random sample on prob.
         init_prob = np.random.dirichlet(np.ones(num_choices), size=1)
         init_sample = (init_prob * 1000).astype(int)
-        self.model.fit(np.ones((np.sum(init_sample), num_covariates)),
-                       np.repeat(np.arange(num_choices), init_sample.reshape(-1), axis = 0))
+        self.model.fit(np.ones((np.sum(init_sample),
+                                num_covariates)),
+                       np.repeat(np.arange(num_choices),
+                                 init_sample.reshape(-1),
+                                 axis = 0)
+                       )
 
     def fit(self, X, y, sample_weight):
         multi_class = 'multinomial' if self.num_choices >= 3 else 'ovr'
