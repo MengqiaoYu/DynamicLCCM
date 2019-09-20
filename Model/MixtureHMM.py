@@ -962,11 +962,8 @@ class HeteroMixtureHMM(MixtureHMM):
 
         return trans_models, choice_models, log_pi
 
-    def set_dataframe(self,
-                      samples,
-                      header,
-                      choices,
-                      trans_cov):
+
+    def set_dataframe(self, data):
         """
         Extract useful data.
 
@@ -989,15 +986,32 @@ class HeteroMixtureHMM(MixtureHMM):
         trans_X = []
 
         logger.info("The covariates are:")
-        logger.info(trans_cov)
+        logger.info(self.trans_cov_header)
 
-        for sample in samples:
-            obs_seq.append(sample[:, [header.index(name)
-                                      for name in choices]].astype(int))
-            trans_X.append(sample[:, [header.index(name)
-                                      for name in trans_cov]])
+        for sample in data:
+            obs_seq.append(sample[:, [self.header.index(name)
+                                      for name in self.choices_header]].astype(int))
+            trans_X.append(sample[:, [self.header.index(name)
+                                      for name in self.trans_cov_header]])
+        return obs_seq, trans_X
 
-        self.obs_seq, self.trans_X = obs_seq, trans_X
+    def gen_train_data(self, data, header, choices_header, trans_cov_header):
+        """
+        generate training data.
+
+        Parameters
+        ----------
+        samples: list of ndarray np with length of number of people;
+                each np array: (T, num_of_choice_models + num of covariates)
+        header: choices + trans_cov.
+        choices: list of colume names for choices.
+        trans_cov: list of colume names for covariates in transition model.
+
+        """
+        self.header  = header
+        self.choices_header = choices_header
+        self.trans_cov_header = trans_cov_header
+        self.obs_seq, self.trans_X = self.set_dataframe(data=data)
         self.set_dataframe_flag = True
 
     def print_results(self,
@@ -1049,7 +1063,7 @@ class HeteroMixtureHMM(MixtureHMM):
                     std, p = choice_models[i][c].get_std()
                     logger.info("\t\t\t" + print_array(p, 3) + '\n')
 
-    def plot_trend(self, trans_models, log_pi, plot_trend = False):
+    def _plot_trend(self, plot_trend = False):
         """
         plot the trend of class transition here.
 
@@ -1068,28 +1082,8 @@ class HeteroMixtureHMM(MixtureHMM):
         logger.info(
             'Plot the trend of transition over {} years'.format(self.num_timesteps))
 
-        state_prob = np.zeros((
-            self.num_seq, self.num_timesteps, self.num_states
-        ))
-
         # Calculate the state i's prob at each timestamp t for household n
-        for n in range(self.num_seq):
-            state_prev_prob = np.exp(log_pi)
-            state_prob[n, 0, :] = state_prev_prob
-
-            for t in range(self.num_timesteps - 1):
-                # import pdb;pdb.set_trace()
-                state_curr_prob = np.zeros((self.num_states))
-                for i in range(self.num_states):
-                    trans_prob = \
-                        np.exp(
-                            trans_models[i].predict_log_proba(self.trans_X[n][t].reshape(1, -1))
-                        ).reshape(self.num_states, )
-                    state_curr_prob  += trans_prob * state_prev_prob[i]
-
-                # Note that we predicting next state prob using current state info.
-                state_prob[n, t + 1, :] = state_curr_prob
-                state_prev_prob = state_curr_prob
+        state_prob, choice_prob = self.predict(self.obs_seq, self.trans_X)
 
         # Plot the trend and save the figure
         year_tot = np.array(range(self.num_timesteps)) + 20
@@ -1101,18 +1095,74 @@ class HeteroMixtureHMM(MixtureHMM):
                      label = label_name)
         plt.xlabel('Year')
         plt.ylabel('Share of each lifestyle')
-        # plt.ylim(0, 0.8)
         plt.grid(True)
         plt.legend()
         plt.savefig(results_dir + 'trend_policy_'
                     + datetime.now().strftime('%y-%m-%d_%H_%M_%S') + '.png')
-        # plt.show()
+
+    def predict(self, obs_seq_temp, trans_X_temp, cal_state = True, cal_choice = False):
+        """
+        Use the estimation results to predict for other observations.
+
+        Parameters
+        ----------
+        data: list of ndarray np with length of number of sequence in this data;
+            each np array: (T, num_of_choice_models + num of covariates)
+
+        Returns
+        -------
+        state_prob: ndarray
+            (num_seq_temp, self.num_timesteps, self.num_states)
+        """
+        assert cal_state == True, "Set the cal_state to be True."
+
+        # obs_seq_temp, trans_X_temp = self.set_dataframe(samples=data)
+        num_seq_temp = len(obs_seq_temp)
+
+        state_prob = np.zeros((
+            num_seq_temp, self.num_timesteps, self.num_states
+        ))
+        choice_prob = np.zeros((
+            num_seq_temp, self.num_timesteps, self.num_choice_models
+        ))
+
+        # Calculate the state i's prob at each timestamp t for household n
+        # Calculate the corresponding choice prob.
+        for n in range(num_seq_temp):
+            state_prev_prob = np.exp(self.log_pi)
+            state_prob[n, 0, :] = state_prev_prob
+
+            for t in range(self.num_timesteps - 1):
+                # import pdb;pdb.set_trace()
+                state_curr_prob = np.zeros((self.num_states))
+                for i in range(self.num_states):
+                    trans_prob = \
+                        np.exp(
+                            self.trans_models[i].predict_log_proba(trans_X_temp[n][t].reshape(1, -1))
+                        ).reshape(self.num_states, )
+                    state_curr_prob  += trans_prob * state_prev_prob[i]
+
+                # Note that we predicting next state prob using current state info.
+                state_prob[n, t + 1, :] = state_curr_prob
+                state_prev_prob = state_curr_prob
+
+                if not cal_choice:
+                    continue
+
+                for c in range(self.num_choice_models):
+                    state_choice_prob = np.vstack([self.choice_models[i][c].predict_log_proba(1)
+                                        for i in range(self.num_states)])
+                    choice_prob[n, t, c] = np.argmax(np.dot(state_curr_prob.T,
+                                                  state_choice_prob))
+
+        return state_prob, choice_prob
+
 
     def train_HeteroMixtureHMM(self,
               cutoff_value,
               max_iter,
-              print_std,
-              plot_trend):
+              print_std = False,
+              plot_trend = False):
         """
         train the model.
 
@@ -1166,10 +1216,8 @@ class HeteroMixtureHMM(MixtureHMM):
         self.print_results(trans_models=self.trans_models,
                            choice_models=self.choice_models,
                            log_pi=self.log_pi,
-                           print_std=True)
-        self.plot_trend(trans_models=self.trans_models,
-                        log_pi=self.log_pi,
-                        plot_trend=True)
+                           print_std=print_std)
+        self._plot_trend(plot_trend=plot_trend)
 
         logger.info("-----------------------THE END-----------------------")
 

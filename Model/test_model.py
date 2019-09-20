@@ -70,12 +70,15 @@ def train_hetero():
     # Set the model
     print("Start training the model...")
     HHMM = MixtureHMM.HeteroMixtureHMM(num_states=3)
-    HHMM.set_dataframe(samples=data_model,
-                       header=header,
-                       choices=choices,
-                       trans_cov=trans_cov)
+    HHMM.gen_train_data(data=data_model,
+                        header=header,
+                        choices_header=choices,
+                        trans_cov_header=trans_cov)
     HHMM.train_HeteroMixtureHMM(cutoff_value=1e-3, max_iter=100, print_std=True, plot_trend=True)
-    print("-----------End-----------")
+    print("-----------Training ends-----------")
+
+    # Prediction
+
 
 if __name__ == '__main__':
     # train_mixture()
