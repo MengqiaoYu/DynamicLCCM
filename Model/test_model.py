@@ -48,14 +48,18 @@ def train_hetero():
     data_dir = '/Users/MengqiaoYu/Desktop/Research/WholeTraveler/Data/model/'
 
     # used_public, used_ridehail, used_own, used_walkbike, numcars_cat
-    choices = ['used_public', 'used_own', 'used_ridehail', 'used_walkbike', 'numcars_cat']
+    choices = ['used_public', 'used_own', 'used_ridehail', 'used_walkbike', 'numcars_cat', 'move']
 
-    # child, move, edu, partner, youngchild, employ, school, ue, iu, age_rescaled
-    trans_cov = ['move', 'partner', 'child', 'employ', 'ue', 'iu']
+    # child, move, edu, partner, youngchild, emplsoy, school, ue, iu, age_rescaled, 'boomer', 'millenial', 'genX'
+    trans_cov = ['school', 'partner', 'child', 'employ', 'millenial', 'genX', 'ue', 'iu']
+
+    init_cov = []
+
+    print(init_cov)
     print(trans_cov)
 
     # full_header =list(data_ind)
-    header = choices + trans_cov
+    header = choices + trans_cov + init_cov
 
     print("Load the formatted files in dir: %s into model." %data_dir)
     data_model = []

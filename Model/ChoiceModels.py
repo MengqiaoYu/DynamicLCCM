@@ -6,29 +6,39 @@ __author__ = "Mengqiao Yu"
 __email__ = "mengqiao.yu@berkeley.edu"
 
 class TransitionModel():
-    """Variant of Multinomial Logit Model"""
+    """
+    Variant of Multinomial Logit Model.
+    Can be used as transition model AND initial model.
+    """
 
     def __init__(self,
-                 intercept_fit=False,
+                 intercept_fit=True,
                  num_states=2,
                  num_covariates=0):
         """
         Notes
         -----
-        num_covariates doesn't include constant.
+        num_covariates doesn't include constant/intercept.
         """
 
         self.intercept_fit = intercept_fit
         self.num_states = num_states
+        # Note: we manually set the fit_intercept to be False and add constant column.
         self.model = LogisticRegression(solver='lbfgs',
-                                        fit_intercept=self.intercept_fit,
+                                        fit_intercept=False,
                                         warm_start=True)
 
-        # Trick: initialize covariates as zero (for first e_step).
-        # self.model.fit(np.ones((self.num_states, num_covariates + 1)),
-        #                np.arange(self.num_states))        
-        self.model.fit(np.random.rand(self.num_states,num_covariates + 1),
-                       np.arange(self.num_states))
+        # Trick: to initialize covariates as zero (for first e_step).
+        # self.model.fit(
+        #   np.ones((self.num_states, num_covariates + self.intercept_fit)),
+        #   np.arange(self.num_states)
+        # )
+        assert num_covariates + self.intercept_fit > 0, \
+            "Error: number of covariates cannot be zero if set intercept_fit to be False!"
+        self.model.fit(
+            np.random.rand(self.num_states,num_covariates + self.intercept_fit),
+            np.arange(self.num_states)
+        )
 
     def _data_formatter(self, X, y):
         """
@@ -36,19 +46,20 @@ class TransitionModel():
 
         Parameters
         ----------
-        X: np array (num_seq * T , num of covariates)
-        y: np array (num_seq * T , num of states) in prob but not discrete choice!
+        X: np array (num_seq * T , num_covariates)
+        y: np array (num_seq * T , num_states) in prob but not discrete choice!
         Returns
         ----------
-        X_augmented: (num_seq * T * num of states, num of covariates + 1)
-        y_augmented: (num_seq * T * num of states, ) as discrete choice
-        sample_weight: (num of obs * num of states, )
+        X_augmented: (num_seq * T * num_states, num_covariates + intercept_fit)
+        y_augmented: (num_seq * T * num_states, ) as discrete choice
+        sample_weight: (num of obs * num_states, )
         """
 
         X = np.vstack(X)
         num_obs, num_states = X.shape[0], y.shape[1]
         X_augmented = np.repeat(X, num_states, axis=0)
-        X_augmented = self._add_constant(X_augmented)
+        if self.intercept_fit:
+            X_augmented = self._add_constant(X_augmented)
         y_augmented = np.tile(np.arange(num_states), num_obs)
         sample_weight = y.reshape(-1, )
 
@@ -67,15 +78,15 @@ class TransitionModel():
         Parameters
         ----------
         X: ndarray
-            (num_seq * T , num of covariates)
+            (num_seq * T , num_covariates)
         y: ndarray
-            (num_seq * T , num of states) in prob.
+            (num_seq * T , num_states) in prob.
         self.X: ndarray
-                (num_seq * T * num of states, num of covariates + 1)
+                (num_seq * T * num_states, num_covariates + intercept_fit)
         self.y: ndarray
-                (num_seq * T * num of states, ) as discrete choice.
+                (num_seq * T * num_states, ) as discrete choice.
         self.sample_weight: ndarray
-                            (num of obs * num of states, )
+                            (num of obs * num_states, )
         """
         num_states = y.shape[1]
         multi_class = 'multinomial' if num_states >= 3 else 'ovr'
@@ -85,9 +96,20 @@ class TransitionModel():
 
     def predict_log_proba(self, X):
         """
-        For external use, for example, calculate the trend.
+        Log of probability estimates.
+
+        Parameters
+        ----------
+        X: ndarray
+            (n_samples, num_covariates + intercept_fit)
+
+        Returns
+        -------
+        self.model.predict_log_proba(X): ndarray
+            (n_samples, num_states)
         """
-        X = self._add_constant(X)
+        if self.intercept_fit:
+            X = self._add_constant(X)
         return self.model.predict_log_proba(X)
 
     def get_params(self):
@@ -100,7 +122,7 @@ class TransitionModel():
             return self.model.coef_ # The first value is intercept
         if self.num_states >= 3:
             # For multinomial case, the constraint is the sum of coef is zero.
-            # We arbitrarily set the first state is the base.
+            # We arbitrarily set the first state as the base.
             return self.model.coef_[1:] - self.model.coef_[0]
 
     def get_std(self):
@@ -222,7 +244,7 @@ class LogitChoiceModel():
             return self.model.coef_, self.model.predict_proba(1)
         if self.num_choices >= 3:
             # For multinomial case, the constraint is the sum of coef is zero.
-            # We arbitrarily set the first state is the base.
+            # We arbitrarily set the first state as the base.
             return self.model.coef_[1:] - self.model.coef_[0], \
                    self.model.predict_proba(1)
 
