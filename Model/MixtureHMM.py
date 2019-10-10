@@ -1646,7 +1646,7 @@ class HeteroMixtureHMM_v2(HeteroMixtureHMM):
             'Plot the trend of transition over {} years'.format(self.num_timesteps))
 
         # Calculate the state i's prob at each timestamp t for household n
-        state_prob, choice_prob = self.predict(self.obs_seq, self.trans_X)
+        state_prob, choice_prob = self.predict(self.obs_seq, self.trans_X, self.init_X)
 
         # Plot the trend and save the figure
         year_tot = np.array(range(self.num_timesteps)) + 20
