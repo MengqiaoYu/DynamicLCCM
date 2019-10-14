@@ -1229,9 +1229,9 @@ class HeteroMixtureHMM_v2(HeteroMixtureHMM):
             i.e., multiple choices(observations) at one timestep.
     Feature 3: heterogeneous HMM: build logit model for transition model.
     Feature 4: calculate standard error and p value for each covariate.
-    the v2 version adds four other features:
+    The v2 version adds two other features:
     Feature 5: extend to deal with multiple sequences with different number of timestamps.
-    Feature 6: add initial model to accomodate both static and dynamic cases.
+    Feature 6: add initial model to accommodate both static and dynamic cases.
     """
     def __init__(self, num_states):
         super().__init__(num_states)
@@ -1442,8 +1442,9 @@ class HeteroMixtureHMM_v2(HeteroMixtureHMM):
         """
 
         # Note: Be careful with the mean of logsumexp, which is incorrect!
-        init_prob = [np.exp(self.log_gammas[s][:, 0])
-                                      for s in range(self.num_seq)]
+        init_prob = np.exp(np.vstack([self.log_gammas[s][:, 0]
+                                      for s in range(self.num_seq)]))
+
         self.init_model.fit(self.init_X, init_prob)
 
         for i in range(self.num_states):
@@ -1489,6 +1490,7 @@ class HeteroMixtureHMM_v2(HeteroMixtureHMM):
 
         # initial model
         init_model = TransitionModel(
+            intercept_fit=False,
             num_states=self.num_states,
             num_covariates=self.num_init_covariates
         )
@@ -1497,6 +1499,7 @@ class HeteroMixtureHMM_v2(HeteroMixtureHMM):
         trans_models = []
         for i in range(self.num_states):
             trans_model = TransitionModel(
+                intercept_fit=True,
                 num_states=self.num_states,
                 num_covariates=self.num_trans_covariates
             )
@@ -1548,9 +1551,11 @@ class HeteroMixtureHMM_v2(HeteroMixtureHMM):
                                       for name in self.choices_header]].astype(int))
             trans_X.append(sample[:, [self.header.index(name)
                                       for name in self.trans_cov_header]])
-            init_X.append(sample[0, [self.header.index(name)
-                                      for name in self.init_cov_header]])
-            assert init_X[0].shape == (1, len(self.init_cov_header)), "Error: shape of init_X is wrong!"
+            init_X.append(
+                sample[0, [self.header.index(name)
+                           for name in self.init_cov_header]].reshape(1, len(self.init_cov_header)))
+            assert init_X[0].shape == (1, len(self.init_cov_header)), \
+                "Error: shape of init_X is wrong!"
 
         return obs_seq, trans_X, init_X
 
@@ -1707,11 +1712,13 @@ class HeteroMixtureHMM_v2(HeteroMixtureHMM):
                 for i in range(self.num_states):
                     trans_prob = \
                         np.exp(
-                            self.trans_models[i].predict_log_proba(trans_X_temp[n][t].reshape(1, -1))
+                            self.trans_models[i].predict_log_proba(
+                                trans_X_temp[n][t].reshape(1, -1)
+                            )
                         ).reshape(self.num_states, )
                     state_curr_prob  += trans_prob * state_prev_prob[i]
 
-                # Note that we predicting next state prob using current state info.
+                # We predict next state prob using current state info.
                 state_prob[n, t + 1, :] = state_curr_prob
                 state_prev_prob = state_curr_prob
 
@@ -1719,10 +1726,13 @@ class HeteroMixtureHMM_v2(HeteroMixtureHMM):
                     continue
 
                 for c in range(self.num_choice_models):
-                    state_choice_prob = np.vstack([self.choice_models[i][c].predict_log_proba(1)
-                                        for i in range(self.num_states)])
-                    choice_prob[n, t, c] = np.argmax(np.dot(state_curr_prob.T,
-                                                  state_choice_prob))
+                    state_choice_prob = np.vstack(
+                        [self.choice_models[i][c].predict_log_proba(1)
+                         for i in range(self.num_states)]
+                    )
+                    choice_prob[n, t, c] = np.argmax(
+                        np.dot(state_curr_prob.T, state_choice_prob)
+                    )
 
         return state_prob, choice_prob
 
