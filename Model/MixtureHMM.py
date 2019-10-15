@@ -684,9 +684,11 @@ class HeteroMixtureHMM(MixtureHMM):
     Feature 1: deal with multiple sequences with same number of time stamps.
     Feature 2: deal with multiple choice models, 
             i.e., multiple choices(observations) at one timestep.
-    class of heterogeneous Mixture HMM adds two other features:
+    class of heterogeneous Mixture HMM adds three other features:
     Feature 3: heterogeneous HMM: build logit model for transition model.
     Feature 4: calculate standard error and p value for each covariate.
+    Feature 5: extend to deal with multiple sequences with same/different
+    number of timestamps.
     """
     def __init__(self, num_states):
         self.set_dataframe_flag = False
@@ -871,7 +873,9 @@ class HeteroMixtureHMM(MixtureHMM):
             # trans_X[n]: (T, num of covariates)
             # log_trans_prob: (num of states, T, num of states)
             log_trans_prob = np.zeros((self.num_states,
-                                       self.num_timesteps, self.num_states))
+                                       self.num_timesteps_list[n],
+                                       self.num_states
+                                       ))
             for i in range(self.num_states):
                 log_trans_prob[i, :, :] = \
                     self.trans_models[i].predict_log_proba(self.trans_X[n])
@@ -901,21 +905,22 @@ class HeteroMixtureHMM(MixtureHMM):
         for i in range(self.num_states):
 
             # re-estimate transition model
-            # y: np (T * self.num_seq, num_states)
+            # y: np (T_n * self.num_seq, num_states)
             y = np.exp(np.vstack([log_xi[i, :, :].T
                                   for log_xi in self.log_xis]))
             self.trans_models[i].fit(self.trans_X, y)
 
             # re-estimate choice models
             for c in range(self.num_choice_models):
-                # X actually represents constant.
-                X = np.ones((self.num_seq * self.num_timesteps, 1))
-
-                # y: np (T * self.num_seq, )
+                # y: np (T_n * self.num_seq, )
                 y = np.hstack([self.obs_seq[i][:, c]
-                               for i in range(self.num_seq)])
-                assert y.shape == (self.num_timesteps * self.num_seq, ), \
+                               for i in range(self.num_seq)]).reshape(-1, 1)
+
+                assert y.shape == (sum(self.num_timesteps_list), 1), \
                     "The shape of choice variable is wrong!"
+
+                # X actually represents constant.
+                X = np.ones((y.shape[0], 1))
 
                 sample_weight = np.exp(np.hstack(
                     [log_gamma[i, :] for log_gamma in self.log_gammas]))
@@ -969,7 +974,7 @@ class HeteroMixtureHMM(MixtureHMM):
         Parameters
         ----------
         samples: list of ndarray np with length of number of people;
-                each np array: (T, num_of_choice_models + num of covariates)
+                each np array: (T_n, num_of_choice_models + num of covariates)
         header: choices + trans_cov.
         choices: list of colume names for choices.
         trans_cov: list of colume names for covariates in transition model.
@@ -977,9 +982,9 @@ class HeteroMixtureHMM(MixtureHMM):
         Returns
         -------
         obs_seq: list of np arrays with length of number of people;
-                each np array: (T, num_of_choice_models)
+                each np array: (T_n, num_of_choice_models)
         trans_X: list of np arrays with length of number of people;
-                each np array: (T, num of covariates)
+                each np array: (T_n, num of covariates)
         """
         obs_seq = []
         trans_X = []
@@ -1001,7 +1006,7 @@ class HeteroMixtureHMM(MixtureHMM):
         Parameters
         ----------
         samples: list of ndarray np with length of number of people;
-                each np array: (T, num_of_choice_models + num of covariates)
+                each np array: (T_n, num_of_choice_models + num of covariates)
         header: choices + trans_cov.
         choices: list of colume names for choices.
         trans_cov: list of colume names for covariates in transition model.
@@ -1079,18 +1084,18 @@ class HeteroMixtureHMM(MixtureHMM):
         if not plot_trend:
             logger.info("The plotting features is set to False!")
         logger.info(
-            'Plot the trend of transition over {} years'.format(self.num_timesteps))
+            'Plot the trend of transition from age 20 to {}'.format(20 + max(self.num_timesteps_list)))
 
         # Calculate the state i's prob at each timestamp t for household n
         state_prob, choice_prob = self.predict(self.obs_seq, self.trans_X)
 
         # Plot the trend and save the figure
-        year_tot = np.array(range(self.num_timesteps)) + 20
+        year_tot = np.array(range(max(self.num_timesteps_list))) + 20
         plt.figure(figsize=(9, 6))
         for i in range(self.num_states):
             label_name = 'class_{}'.format(i + 1)
             plt.plot(year_tot,
-                     np.sum(state_prob[:, :, i], axis=0)/self.num_seq,
+                     np.sum(state_prob[:, :, i], axis=0)/np.count_nonzero(state_prob[:, :, i], axis=0),
                      label = label_name)
 
         plt.xlabel('Year')
@@ -1112,7 +1117,7 @@ class HeteroMixtureHMM(MixtureHMM):
         Returns
         -------
         state_prob: ndarray
-            (num_seq_temp, self.num_timesteps, self.num_states)
+            (num_seq_temp, max(self.num_timesteps_list), self.num_states)
         """
         assert cal_state == True, "Set the cal_state to be True."
 
@@ -1120,10 +1125,10 @@ class HeteroMixtureHMM(MixtureHMM):
         num_seq_temp = len(obs_seq_temp)
 
         state_prob = np.zeros((
-            num_seq_temp, self.num_timesteps, self.num_states
+            num_seq_temp, max(self.num_timesteps_list), self.num_states
         ))
         choice_prob = np.zeros((
-            num_seq_temp, self.num_timesteps, self.num_choice_models
+            num_seq_temp, max(self.num_timesteps_list), self.num_choice_models
         ))
 
         # Calculate the state i's prob at each timestamp t for household n
@@ -1132,7 +1137,7 @@ class HeteroMixtureHMM(MixtureHMM):
             state_prev_prob = np.exp(self.log_pi)
             state_prob[n, 0, :] = state_prev_prob
 
-            for t in range(self.num_timesteps - 1):
+            for t in range(self.num_timesteps_list[n] - 1):
                 # import pdb;pdb.set_trace()
                 state_curr_prob = np.zeros((self.num_states))
                 for i in range(self.num_states):
@@ -1180,7 +1185,8 @@ class HeteroMixtureHMM(MixtureHMM):
         # Basic information of the model framework
         self.num_seq = len(self.obs_seq)
         self.num_trans_covariates = self.trans_X[0].shape[1]
-        self.num_timesteps = self.obs_seq[0].shape[0]
+        self.num_timesteps_list = [self.obs_seq[i].shape[0]
+                                  for i in range(self.num_seq)]
         self.num_choice_models = self.obs_seq[0].shape[1]
         self.num_choices = [max(len(np.unique(self.obs_seq[i][:, c]))
                                 for i in range(self.num_seq))
@@ -1221,17 +1227,13 @@ class HeteroMixtureHMM(MixtureHMM):
 
         logger.info("-----------------------THE END-----------------------")
 
-class HeteroMixtureHMM_v2(HeteroMixtureHMM):
+class MixtureLCCM(HeteroMixtureHMM):
     """
-    In addition to the features of heterogeneous Mixture HMM:
-    Feature 1: deal with multiple sequences with same number of timestamps.
-    Feature 2: deal with multiple choice models,
-            i.e., multiple choices(observations) at one timestep.
-    Feature 3: heterogeneous HMM: build logit model for transition model.
-    Feature 4: calculate standard error and p value for each covariate.
-    The v2 version adds two other features:
-    Feature 5: extend to deal with multiple sequences with different number of timestamps.
-    Feature 6: add initial model to accommodate both static and dynamic cases.
+    This class deals with the static version of heterogeneous Mixture HMM.
+    This has two type of models:
+    (1) Initial model, i.e., class-membership model whose form is similar to
+    transition model.
+    (2) A set of choice models.
     """
     def __init__(self, num_states):
         super().__init__(num_states)
