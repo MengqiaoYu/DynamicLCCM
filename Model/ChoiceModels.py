@@ -92,7 +92,10 @@ class TransitionModel():
         multi_class = 'multinomial' if num_states >= 3 else 'ovr'
         self.model.multi_class = multi_class
         self.X, self.y, self.sample_weight = self._data_formatter(X, y)
-        self.model.fit(self.X, self.y, sample_weight=self.sample_weight)
+        self.model.fit(self.X,
+                       self.y.reshape(-1),
+                       sample_weight=self.sample_weight
+                       )
 
     def predict_log_proba(self, X):
         """
@@ -223,7 +226,10 @@ class LogitChoiceModel():
         self.X = X
         self.y = y
         self.sample_weight = sample_weight
-        self.model.fit(X, y, sample_weight)
+        self.model.fit(X,
+                       y.reshape(-1),
+                       sample_weight
+                       )
 
     def predict_log_proba(self, X):
         return self.model.predict_log_proba(X)

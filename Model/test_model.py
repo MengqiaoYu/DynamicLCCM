@@ -45,21 +45,22 @@ def train_mixture():
 # test HeteroMixtureHMM
 def train_hetero():
     """"We don't need sampling anymore, we directly feed our own dataset and test the model."""
-    data_dir = '/Users/MengqiaoYu/Desktop/Research/WholeTraveler/Data/model/'
+    data_dir = '/Users/MengqiaoYu/Desktop/Research/WholeTraveler/Data/model_full_traj/'
 
     # used_public, used_ridehail, used_own, used_walkbike, numcars_cat
-    choices = ['used_public', 'used_own', 'used_ridehail', 'used_walkbike', 'numcars_cat', 'move']
+    choices = ['used_public', 'used_own', 'used_ridehail', 'used_walkbike', 'numcars_cat']
 
     # child, move, edu, partner, youngchild, emplsoy, school, ue, iu, age_rescaled, 'boomer', 'millenial', 'genX'
-    trans_cov = ['school', 'partner', 'child', 'employ', 'millenial', 'genX', 'ue', 'iu']
+    trans_cov = ['age_rescaled','move', 'school', 'partner', 'youngchild', 'employ', 'millenial', 'genX', 'ue', 'iu', 'gas']
 
-    init_cov = []
+    # init_cov = ['age_rescaled']
 
-    print(init_cov)
+    # print(init_cov)
     print(trans_cov)
 
     # full_header =list(data_ind)
-    header = choices + trans_cov + init_cov
+    header = choices + trans_cov
+    # header = choices + trans_cov + init_cov
 
     print("Load the formatted files in dir: %s into model." %data_dir)
     data_model = []
@@ -78,12 +79,48 @@ def train_hetero():
                         header=header,
                         choices_header=choices,
                         trans_cov_header=trans_cov)
-    HHMM.train_HeteroMixtureHMM(cutoff_value=1e-3, max_iter=100, print_std=True, plot_trend=True)
+    HHMM.train_HeteroMixtureHMM(cutoff_value=1e-3, max_iter=100, print_std=False, plot_trend=True)
     print("-----------Training ends-----------")
 
     # Prediction
 
+def train_lccm():
+    """"We don't need sampling anymore, we directly feed our own dataset and test the model."""
+    data_dir = '/Users/MengqiaoYu/Desktop/Research/WholeTraveler/Data/model_full_traj/'
+
+    # used_public, used_ridehail, used_own, used_walkbike, numcars_cat
+    choices = ['used_public', 'used_own', 'used_ridehail', 'used_walkbike', 'numcars_cat']
+
+    # child, move, edu, partner, youngchild, emplsoy, school, ue, iu, age_rescaled, 'boomer', 'millenial', 'genX'
+    init_cov = ['age_rescaled', 'school', 'partner', 'ue', 'iu', 'gas']
+
+    # print(init_cov)
+    print(init_cov)
+
+    # full_header =list(data_ind)
+    header = choices + init_cov
+
+    print("Load the formatted files in dir: %s into model." %data_dir)
+    data_model = []
+    for f in listdir(data_dir):
+        if f.startswith('.'):
+            continue
+        data_ind = pd.read_csv(data_dir + f)
+        data_model.append(data_ind[header].values)
+        if len(data_model) % 200 == 0:
+            print("\t Processed %d files." %len(data_model))
+
+    # Set the model
+    print("Start training the model...")
+    LCCM = MixtureHMM.MixtureLCCM(num_states=3)
+    LCCM.gen_train_data(data=data_model,
+                        header=header,
+                        choices_header=choices,
+                        init_cov_header=init_cov)
+    LCCM.train_MixtureLCCM(cutoff_value=1e-3, max_iter=100, print_std=False)
+    print("-----------Training ends-----------")
 
 if __name__ == '__main__':
     # train_mixture()
-    train_hetero()
+    # train_hetero()
+    train_lccm()

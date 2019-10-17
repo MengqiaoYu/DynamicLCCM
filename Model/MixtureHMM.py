@@ -11,7 +11,8 @@ __author__ = "Mengqiao Yu"
 __email__ = "mengqiao.yu@berkeley.edu"
 
 logger = logging.getLogger()
-results_dir = '/Users/MengqiaoYu/Desktop/Research/WholeTraveler/estimation_results/'
+# Set the path to results directory
+results_dir = 'path_of_results_directory'
 log_file=os.path.join(results_dir,
                       datetime.now().strftime('%y-%m-%d_%H_%M_%S') + '.txt')
 logging.basicConfig(format='%(message)s',
@@ -913,8 +914,8 @@ class HeteroMixtureHMM(MixtureHMM):
             # re-estimate choice models
             for c in range(self.num_choice_models):
                 # y: np (T_n * self.num_seq, )
-                y = np.hstack([self.obs_seq[i][:, c]
-                               for i in range(self.num_seq)]).reshape(-1, 1)
+                y = np.hstack([self.obs_seq[n][:, c]
+                               for n in range(self.num_seq)]).reshape(-1, 1)
 
                 assert y.shape == (sum(self.num_timesteps_list), 1), \
                     "The shape of choice variable is wrong!"
@@ -952,6 +953,7 @@ class HeteroMixtureHMM(MixtureHMM):
         trans_models = []
         for i in range(self.num_states):
             trans_model = TransitionModel(
+                intercept_fit=False,
                 num_states=self.num_states,
                 num_covariates=self.num_trans_covariates
             )
@@ -1083,8 +1085,12 @@ class HeteroMixtureHMM(MixtureHMM):
 
         if not plot_trend:
             logger.info("The plotting features is set to False!")
+            return
         logger.info(
-            'Plot the trend of transition from age 20 to {}'.format(20 + max(self.num_timesteps_list)))
+            'Plot the trend of transition over {} time steps'.format(
+                max(self.num_timesteps_list)
+            )
+        )
 
         # Calculate the state i's prob at each timestamp t for household n
         state_prob, choice_prob = self.predict(self.obs_seq, self.trans_X)
@@ -1097,15 +1103,15 @@ class HeteroMixtureHMM(MixtureHMM):
             plt.plot(year_tot,
                      np.sum(state_prob[:, :, i], axis=0)/np.count_nonzero(state_prob[:, :, i], axis=0),
                      label = label_name)
-
-        plt.xlabel('Year')
-        plt.ylabel('Share of each lifestyle')
+        plt.xlabel('Time')
+        plt.ylabel('Share of each class')
         plt.grid(True)
         plt.legend()
         plt.savefig(results_dir + 'trend_policy_'
                     + datetime.now().strftime('%y-%m-%d_%H_%M_%S') + '.png')
 
-    def predict(self, obs_seq_temp, trans_X_temp, cal_state = True, cal_choice = False):
+    def predict(self, obs_seq_temp, trans_X_temp,
+                calc_state = True, calc_choice = False):
         """
         Use the estimation results to predict for other observations.
 
@@ -1119,7 +1125,7 @@ class HeteroMixtureHMM(MixtureHMM):
         state_prob: ndarray
             (num_seq_temp, max(self.num_timesteps_list), self.num_states)
         """
-        assert cal_state == True, "Set the cal_state to be True."
+        assert calc_state == True, "Set the cal_state to be True."
 
         # obs_seq_temp, trans_X_temp = self.set_dataframe(samples=data)
         num_seq_temp = len(obs_seq_temp)
@@ -1151,7 +1157,7 @@ class HeteroMixtureHMM(MixtureHMM):
                 state_prob[n, t + 1, :] = state_curr_prob
                 state_prev_prob = state_curr_prob
 
-                if not cal_choice:
+                if not calc_choice:
                     continue
 
                 for c in range(self.num_choice_models):
@@ -1161,7 +1167,6 @@ class HeteroMixtureHMM(MixtureHMM):
                                                   state_choice_prob))
 
         return state_prob, choice_prob
-
 
     def train_HeteroMixtureHMM(self,
               cutoff_value,
@@ -1185,12 +1190,13 @@ class HeteroMixtureHMM(MixtureHMM):
         # Basic information of the model framework
         self.num_seq = len(self.obs_seq)
         self.num_trans_covariates = self.trans_X[0].shape[1]
-        self.num_timesteps_list = [self.obs_seq[i].shape[0]
-                                  for i in range(self.num_seq)]
+        self.num_timesteps_list = [self.obs_seq[n].shape[0]
+                                  for n in range(self.num_seq)]
         self.num_choice_models = self.obs_seq[0].shape[1]
-        self.num_choices = [max(len(np.unique(self.obs_seq[i][:, c]))
-                                for i in range(self.num_seq))
-                            for c in range(self.num_choice_models)]
+        self.num_choices = [
+            len(np.unique(np.hstack([self.obs_seq[n][:, c]
+                                     for n in range(self.num_seq)]
+                                    ))) for c in range(self.num_choice_models)]
 
         # Initialization
         logger.info("Initializing...")
@@ -1227,19 +1233,18 @@ class HeteroMixtureHMM(MixtureHMM):
 
         logger.info("-----------------------THE END-----------------------")
 
-class MixtureLCCM(HeteroMixtureHMM):
+class MixtureLCCM(MixtureHMM):
     """
     This class deals with the static version of heterogeneous Mixture HMM.
     This has two type of models:
     (1) Initial model, i.e., class-membership model whose form is similar to
     transition model.
-    (2) A set of choice models.
+    (2) A set of choice models, i.e., class-specific choice models.
     """
     def __init__(self, num_states):
         super().__init__(num_states)
 
-    def _forward(self,
-                 log_trans_prob,
+    def _calc_log_alpha(self,
                  log_choice_prob,
                  log_init_prob
                  ):
@@ -1248,122 +1253,51 @@ class MixtureLCCM(HeteroMixtureHMM):
 
         Parameters
         ----------
-        log_trans_prob: ndarray
-            (num of states, T, num of states)
         log_choice_prob: ndarray
-            (T, num of states)
+            (1, num of states)
         log_init_prob: ndarray
-            log of initial matrix prob (1, num of states)
+            log of initial matrix prob with shape (1, num of states)
 
         Returns
         -------
         log_alpha: ndarray
-            the probability of seeing the observations y_0, ..., y_t
-            and being in state i at time t.
-            (T, num of states)
+            the probability of being in state i.
+            (1, num of states)
         """
-        T = log_choice_prob.shape[0] # number of timestamps
-        K = log_choice_prob.shape[1] # number of states
-        log_alpha = np.zeros((T, K))
 
-        # alpha(q_0)
-        log_alpha[0, :] = log_init_prob + log_choice_prob[0, :]
-
-        # alpha(q_t)
-        for t in range(1, T):
-            log_alpha[t, :] = logsumexp(log_alpha[t-1, :]
-                                        + log_trans_prob[:, t-1, :].T, axis=1) \
-                              + log_choice_prob[t, :]
+        log_alpha = log_init_prob + log_choice_prob
 
         return log_alpha
 
-    def _backward(self,
-                  log_trans_prob,
-                  log_choice_prob):
+    def _calc_log_gamma(self, log_alpha, log_ll):
         """
-        backward step in Baum–Welch algorithm.
+        calculate log of gamma: the expectation of q_n.
 
         Parameters
         ----------
-        log_trans_prob: ndarray
-            (num of states, T, num of states)
-        log_choice_prob: ndarray
-            (T, num of states)
-
-        Returns
-        -------
-        log_beta: ndarray
-             the probability of the ending partial sequence y_t+1, ..., y_T
-             given starting state i at time t.
-            (T, num of states)
-        """
-        T = log_choice_prob.shape[0] # number of timestamps
-        K = log_choice_prob.shape[1] # number of states
-
-        log_beta = np.zeros((T, K))
-        # Note: We don't need to specify the log_beta[T, :]
-        # since we have set it to zero.
-
-        for t in range(T-2, -1, -1):
-            log_beta[t, :] = logsumexp(log_beta[t+1, :]
-                                       + log_trans_prob[:, t, :]
-                                       + log_choice_prob[t+1, :], axis = 1)
-
-        return log_beta
-
-    def _calc_log_xi(self,
-                     log_trans_prob,
-                     log_choice_prob,
-                     log_alpha,
-                     log_beta,
-                     log_ll):
-        """
-        calculate xi built on alpha and beta.
-
-        Parameters
-        ----------
-        log_trans_prob: ndarray
-            (num of states, T, num of states)
-        log_choice_prob: ndarray
-            (T, num of states)
         log_alpha: ndarray
-            (T, num of states)
-        log_beta: ndarray
-            (T, num of states)
+            the probability of being in state i.
+            (1, num of states)
         log_ll: float
+            log of likelihood: log(p(y|theta))
 
         Returns
         -------
-        log_xi: ndarray
-            xi(q_t, q_t+1) = P(q_t, q_t+1|y) (num of states, num of states, T)
+        log_gamma: ndarray
+            gamma(q_n) = P(q_n | y), (num of states, 1)
         """
-
-        T = log_choice_prob.shape[0] # number of timestamps
-        K = log_choice_prob.shape[1] # number of states
-
-        log_xi = np.zeros((K, K, T))
-
-        for t in range(T-1):
-            for i in range(K):
-                for j in range(K):
-                    log_xi[i, j, t] = log_alpha[t, i] \
-                                      + log_choice_prob[t+1, j] \
-                                      + log_beta[t+1, j] \
-                                      + log_trans_prob[i, t, j] \
-                                      - log_ll
-        return log_xi
+        log_gamma = log_alpha - log_ll
+        return log_gamma.T
 
     def _forward_backward(self,
-                          log_trans_prob,
                           log_choice_prob,
                           log_init_prob):
         """
-        forward backward algorithm.
+        This is actually no longer forward backward algorithm since it is static
+        version of HMM. We just inherit the framework for convenience.
 
         Parameters
         ----------
-        log_trans_prob: ndarray
-            (num of states, T, num of states)
         log_choice_prob: ndarray
             (T, num of states)
         log_init_prob: ndarray
@@ -1371,36 +1305,47 @@ class MixtureLCCM(HeteroMixtureHMM):
 
         Returns
         -------
-        log_xi: ndarray
-            xi(q_t, q_t+1) = P(q_t, q_t+1|y) (num of states, num of states, T)
         log_gamma: ndarray
-            gamma(q_t) = P(q_t | y) (num of states, T)
+            gamma(q_n) = P(q_n | y_n) (num of states, 1)
         log_ll: float
         """
 
-        log_alpha = self._forward(log_trans_prob, log_choice_prob, log_init_prob)
+        log_alpha = self._calc_log_alpha(log_choice_prob, log_init_prob)
 
-        log_beta = self._backward(log_trans_prob, log_choice_prob)
+        assert log_alpha.shape == (1, self.num_states), "The shape of log_alpha is wrong!"
 
         log_ll = self._cal_log_likelihood(log_alpha)
 
-        log_xi = self._calc_log_xi(log_trans_prob, log_choice_prob,
-                                   log_alpha, log_beta, log_ll)
+        log_gamma = self._calc_log_gamma(log_alpha, log_ll)
 
-        log_gamma = self._calc_log_gamma(log_alpha, log_beta, log_ll)
-
-        return log_xi, log_gamma, log_ll
+        return log_gamma, log_ll
 
     def e_step(self):
         """
-        calculate log_xi, log_gamma, log_ll (forward backward) for all sequences
+        calculate log_xi, log_gamma, log_ll for all observations.
+
+        Parameters
+        ----------
+        log_b: list
+            len(log_b) = num_of_choice_models
+            nparray with shape (K, num_of_choices) for each item in the list.
+        init_X: nparray
+            (num_seq, num of covariates)
+        log_init_prob: nparray
+            (1, num of states)
+        log_choice_prob: nparray
+            (1, num of states)
+        obs: nparray
+            (1, num_of_choice_models)
+        log_gamma: ndarray
+            gamma(q_n) = P(q_n | y_n) (num of states, 1)
+        log_gammas: list
+            len(log_gammas) = num_of_choice_models
         """
-        self.log_xis = []
         self.log_gammas = []
         self.log_lls = []
 
         ### Calculate log_b
-        # log_b: (num_of_choice_models, K * num_of_choices in each choice model)
         log_b = []
         for c in range(self.num_choice_models):
             # c represents one choice model
@@ -1412,64 +1357,51 @@ class MixtureLCCM(HeteroMixtureHMM):
         for n, obs in enumerate(self.obs_seq):
 
             ### Calculate the initial log_prob
-            # init_X[n]: (1, num of covariates)
-            # log_init_prob: (1, num of states)
             log_init_prob = self.init_model.predict_log_proba(self.init_X[n])
 
-            ### Calculate the transition log_prob
-            # trans_X[n]: (T, num of covariates)
-            # log_trans_prob: (num of states, T, num of states)
-            log_trans_prob = np.zeros((self.num_states,
-                                       self.num_timesteps, self.num_states))
-            for i in range(self.num_states):
-                log_trans_prob[i, :, :] = \
-                    self.trans_models[i].predict_log_proba(self.trans_X[n])
-
             ### Calculate the emission matrix (log_prob)
-            # log_choice_prob: (T, num of states)
+            obs = obs.reshape(1, self.num_choice_models)
             log_choice_prob = self.cal_log_prob_choices(log_b=log_b, o=obs)
 
             ### forward backward
-            log_xi, log_gamma, log_ll = self._forward_backward(
-                log_trans_prob=log_trans_prob,
+            log_gamma, log_ll = self._forward_backward(
                 log_choice_prob=log_choice_prob,
                 log_init_prob=log_init_prob)
-            self.log_xis.append(log_xi)
             self.log_gammas.append(log_gamma)
             self.log_lls.append(log_ll)
 
     def m_step(self):
         """
         re-estimate parameters
+
+        Parameters
+        ----------
+        init_prob: nparray
+            (self.num_seq, self.num_states)
+
         """
 
         # Note: Be careful with the mean of logsumexp, which is incorrect!
-        init_prob = np.exp(np.vstack([self.log_gammas[s][:, 0]
-                                      for s in range(self.num_seq)]))
-
+        init_prob = np.exp(np.vstack(
+            [log_gamma.T for log_gamma in self.log_gammas]
+        ))
         self.init_model.fit(self.init_X, init_prob)
 
         for i in range(self.num_states):
-
-            # re-estimate transition model
-            # y: np (T * self.num_seq, num_states)
-            y = np.exp(np.vstack([log_xi[i, :, :].T
-                                  for log_xi in self.log_xis]))
-            self.trans_models[i].fit(self.trans_X, y)
-
             # re-estimate choice models
             for c in range(self.num_choice_models):
                 # X actually represents constant.
-                X = np.ones((self.num_seq * self.num_timesteps, 1))
+                X = np.ones((self.num_seq, 1))
 
                 # y: np (T * self.num_seq, )
-                y = np.hstack([self.obs_seq[i][:, c]
-                               for i in range(self.num_seq)])
-                assert y.shape == (self.num_timesteps * self.num_seq, ), \
+                y = np.hstack([self.obs_seq[n][c]
+                               for n in range(self.num_seq)])
+                assert y.shape == (self.num_seq, ), \
                     "The shape of choice variable is wrong!"
 
                 sample_weight = np.exp(np.hstack(
-                    [log_gamma[i, :] for log_gamma in self.log_gammas]))
+                    [log_gamma[i] for log_gamma in self.log_gammas]
+                ))
                 self.choice_models[i][c].fit(X, y, sample_weight)
 
     def initialize(self):
@@ -1492,20 +1424,10 @@ class MixtureLCCM(HeteroMixtureHMM):
 
         # initial model
         init_model = TransitionModel(
-            intercept_fit=False,
+            intercept_fit=True,
             num_states=self.num_states,
             num_covariates=self.num_init_covariates
         )
-
-        # transition model
-        trans_models = []
-        for i in range(self.num_states):
-            trans_model = TransitionModel(
-                intercept_fit=True,
-                num_states=self.num_states,
-                num_covariates=self.num_trans_covariates
-            )
-            trans_models.append(trans_model)
 
         # choice models
         # choice_models is a list of models: (num_states, num_choice_models)
@@ -1515,7 +1437,7 @@ class MixtureLCCM(HeteroMixtureHMM):
                             for c in range(self.num_choice_models)]
             choice_models.append(choice_model)
 
-        return trans_models, choice_models, init_model
+        return choice_models, init_model
 
     def set_dataframe(self, data):
         """
@@ -1524,45 +1446,37 @@ class MixtureLCCM(HeteroMixtureHMM):
         Parameters
         ----------
         data: list of ndarray np with length of number of people;
-                each np array: (T, num_of_choice_models + num of covariates)
+                each np array: (1, num_of_choice_models + num of covariates)
         header: choices + trans_cov + init_cov.
         choices: list of colume names for choices.
-        trans_cov: list of colume names for covariates in transition model.
         init_cov: list of colume names for covariates in initial model.
 
         Returns
         -------
         obs_seq: list of np arrays with length of number of people;
-                each np array: (T, num_of_choice_models)
-        trans_X: list of np arrays with length of number of people;
-                each np array: (T, num of trans_cov)
+                each np array: (1, num_of_choice_models)
         init_X: list of np arrays with length of number of people;
                 each np array: (1, num of init_cov)
         """
         obs_seq = []
-        trans_X = []
         init_X = []
 
         logger.info("The initial covariates are:")
         logger.info(self.init_cov_header)
-        logger.info("The transition covariates are:")
-        logger.info(self.trans_cov_header)
 
         for sample in data:
-            obs_seq.append(sample[:, [self.header.index(name)
+            obs_seq.append(sample[0, [self.header.index(name)
                                       for name in self.choices_header]].astype(int))
-            trans_X.append(sample[:, [self.header.index(name)
-                                      for name in self.trans_cov_header]])
+
             init_X.append(
                 sample[0, [self.header.index(name)
                            for name in self.init_cov_header]].reshape(1, len(self.init_cov_header)))
             assert init_X[0].shape == (1, len(self.init_cov_header)), \
                 "Error: shape of init_X is wrong!"
 
-        return obs_seq, trans_X, init_X
+        return obs_seq, init_X
 
-    def gen_train_data(self, data, header,
-                       choices_header, trans_cov_header, init_cov_header):
+    def gen_train_data(self, data, header, choices_header, init_cov_header):
         """
         generate training data.
 
@@ -1577,13 +1491,11 @@ class MixtureLCCM(HeteroMixtureHMM):
         """
         self.header  = header
         self.choices_header = choices_header
-        self.trans_cov_header = trans_cov_header
         self.init_cov_header = init_cov_header
-        self.obs_seq, self.trans_X, self.init_X = self.set_dataframe(data=data)
+        self.obs_seq, self.init_X = self.set_dataframe(data=data)
         self.set_dataframe_flag = True
 
     def print_results(self,
-                      trans_models,
                       choice_models,
                       init_model,
                       print_std = False):
@@ -1609,24 +1521,16 @@ class MixtureLCCM(HeteroMixtureHMM):
         float_formatter = lambda x: "%.3f" % x
         np.set_printoptions(formatter={'float_kind':float_formatter})
 
-        logger.info("\tHere is the initial model:")
+        logger.info("\tHere is the class membership model:")
         logger.info("\t\t\t" + print_array(init_model.get_params(), 3))
         if print_std:
             std, p = init_model.get_std()
             logger.info("\t\t\t" + print_array(p, 3) + '\n')
 
-        logger.info("\tHere is the transition model:")
-        for i in range(self.num_states):
-            logger.info("\t\tThis is the transition model for state %d" %(i+1))
-            logger.info("\t\t\t" + print_array(trans_models[i].get_params(), 3))
-            if print_std:
-                std, p = trans_models[i].get_std()
-                logger.info("\t\t\t" + print_array(p, 3) + '\n')
-
         for c in range(self.num_choice_models):
             logger.info("\tFor choice model %d (%s)" %(c+1, self.choices_header[c]))
             for i in range(self.num_states):
-                logger.info("\t\tHere is estimates for state %d:" %(i+1))
+                logger.info("\t\tHere is estimates for class %d:" %(i+1))
                 coef, prob = choice_models[i][c].get_params()
                 logger.info("\t\t\t" + print_array(coef, 3))
                 logger.info("\t\t\t" + print_array(prob, 3))
@@ -1634,116 +1538,57 @@ class MixtureLCCM(HeteroMixtureHMM):
                     std, p = choice_models[i][c].get_std()
                     logger.info("\t\t\t" + print_array(p, 3) + '\n')
 
-    def _plot_trend(self, plot_trend = False):
-        """
-        plot the trend of class transition here.
 
-        Parameters
-        ----------
-        trans_models: list
-            a list of logit models with number of states.
-        init_model: one logit model
-        plot_trend: bool
-            set to True for plotting trend and save the figure.
-        """
-
-        if not plot_trend:
-            logger.info("The plotting features is set to False!")
-        logger.info(
-            'Plot the trend of transition over {} years'.format(self.num_timesteps))
-
-        # Calculate the state i's prob at each timestamp t for household n
-        state_prob, choice_prob = self.predict(self.obs_seq, self.trans_X, self.init_X)
-
-        # Plot the trend and save the figure
-        year_tot = np.array(range(self.num_timesteps)) + 20
-        plt.figure(figsize=(9, 6))
-        for i in range(self.num_states):
-            label_name = 'class_{}'.format(i + 1)
-            plt.plot(year_tot,
-                     np.sum(state_prob[:, :, i], axis=0)/self.num_seq,
-                     label = label_name)
-
-        plt.xlabel('Year')
-        plt.ylabel('Share of each lifestyle')
-        plt.grid(True)
-        plt.legend()
-        plt.savefig(results_dir + 'trend_policy_'
-                    + datetime.now().strftime('%y-%m-%d_%H_%M_%S') + '.png')
-
-    def predict(self, obs_seq_temp, trans_X_temp, init_X_temp,
-                cal_state = True, cal_choice = False):
+    def predict(self, obs_seq_temp, init_X_temp,
+                calc_state = True, calc_choice = False):
         """
         Use the estimation results to predict for other observations.
 
         Parameters
         ----------
-        data: list of ndarray np with length of number of sequence in this data;
-            each np array: (T, num_of_choice_models + num of covariates)
+        init_X_temp: nparray
+            (num_seq_temp, num of covariates)
 
         Returns
         -------
         state_prob: ndarray
-            (num_seq_temp, self.num_timesteps, self.num_states)
+            (num_seq_temp, self.num_states)
         """
-        assert cal_state == True, "Set the cal_state to be True."
+        assert calc_state == True, "Set the cal_state to be True."
 
         # obs_seq_temp, trans_X_temp = self.set_dataframe(samples=data)
         num_seq_temp = len(obs_seq_temp)
 
-        state_prob = np.zeros((
-            num_seq_temp, self.num_timesteps, self.num_states
-        ))
+        state_prob = np.zeros((num_seq_temp, self.num_states))
         choice_prob = np.zeros((
-            num_seq_temp, self.num_timesteps, self.num_choice_models
+            num_seq_temp, self.num_states, self.num_choice_models
         ))
 
-        # Calculate the state i's prob at each timestamp t for household n
+        # Calculate the state i's prob for individual n
         # Calculate the corresponding choice prob.
         for n in range(num_seq_temp):
-            init_prob = np.exp(
+            state_prob[n, :] = np.exp(
                 self.init_model.predict_log_proba(
                     init_X_temp[n].reshape(1, -1))
             ).reshape(self.num_states, )
-            state_prev_prob = init_prob
-            state_prob[n, 0, :] = state_prev_prob
 
-            for t in range(self.num_timesteps - 1):
-                # import pdb;pdb.set_trace()
-                state_curr_prob = np.zeros((self.num_states))
-                for i in range(self.num_states):
-                    trans_prob = \
-                        np.exp(
-                            self.trans_models[i].predict_log_proba(
-                                trans_X_temp[n][t].reshape(1, -1)
-                            )
-                        ).reshape(self.num_states, )
-                    state_curr_prob  += trans_prob * state_prev_prob[i]
+            if not calc_choice:
+                continue
 
-                # We predict next state prob using current state info.
-                state_prob[n, t + 1, :] = state_curr_prob
-                state_prev_prob = state_curr_prob
-
-                if not cal_choice:
-                    continue
-
-                for c in range(self.num_choice_models):
-                    state_choice_prob = np.vstack(
-                        [self.choice_models[i][c].predict_log_proba(1)
-                         for i in range(self.num_states)]
-                    )
-                    choice_prob[n, t, c] = np.argmax(
-                        np.dot(state_curr_prob.T, state_choice_prob)
-                    )
+            for c in range(self.num_choice_models):
+                state_choice_prob = np.vstack(
+                    [self.choice_models[i][c].predict_log_proba(1)
+                     for i in range(self.num_states)]
+                )
+                choice_prob[n, c, :] = np.dot(state_prob, state_choice_prob)
 
         return state_prob, choice_prob
 
 
-    def train_HeteroMixtureHMM(self,
+    def train_MixtureLCCM(self,
               cutoff_value,
               max_iter,
-              print_std = False,
-              plot_trend = False):
+              print_std = False):
         """
         train the model.
 
@@ -1758,25 +1603,21 @@ class MixtureLCCM(HeteroMixtureHMM):
         assert self.set_dataframe_flag == True, \
             "Run model.gen_train_data before training."
 
-        # TODO: different length of timestamps for each sequence.
-        # TODO: accomodate both static and dynamics cases. (might need to change dataframe.)
-
         # Basic information of the model framework
         self.num_seq = len(self.obs_seq)
-        self.num_trans_covariates = self.trans_X[0].shape[1]
         self.num_init_covariates = self.init_X[0].shape[1]
-        self.num_timesteps = self.obs_seq[0].shape[0]
-        self.num_choice_models = self.obs_seq[0].shape[1]
-        self.num_choices = [max(len(np.unique(self.obs_seq[i][:, c]))
-                                for i in range(self.num_seq))
-                            for c in range(self.num_choice_models)]
+        self.num_choice_models = len(self.obs_seq[0])
+        self.num_choices = [len(np.unique([self.obs_seq[n][c]
+                                           for n in range(self.num_seq)]
+                                          )
+                                ) for c in range(self.num_choice_models)
+                            ]
 
         # Initialization
         logger.info("Initializing...")
-        self.trans_models, self.choice_models, self.init_model = self.initialize()
+        self.choice_models, self.init_model = self.initialize()
         # If you want to log the initial data, uncomment the below.
-        # self.print_results(trans_models=self.trans_models,
-        #                    choice_models=self.choice_models,
+        # self.print_results(choice_models=self.choice_models,
         #                    init_model=self.init_model,
         #                    print_std=False)
 
@@ -1798,10 +1639,8 @@ class MixtureLCCM(HeteroMixtureHMM):
 
         # Print final estimation results.
         logger.info("The estimation results are:")
-        self.print_results(trans_models=self.trans_models,
-                           choice_models=self.choice_models,
+        self.print_results(choice_models=self.choice_models,
                            init_model=self.init_model,
                            print_std=print_std)
-        self._plot_trend(plot_trend=plot_trend)
 
         logger.info("-----------------------THE END-----------------------")
