@@ -23,7 +23,8 @@ class TransitionModel():
 
         self.intercept_fit = intercept_fit
         self.num_states = num_states
-        # Note: we manually set the fit_intercept to be False and add constant column.
+        # Note: we manually set the fit_intercept to be False
+        # and add constant column to X.
         self.model = LogisticRegression(solver='lbfgs',
                                         fit_intercept=False,
                                         warm_start=True)
@@ -34,7 +35,8 @@ class TransitionModel():
         #   np.arange(self.num_states)
         # )
         assert num_covariates + self.intercept_fit > 0, \
-            "Error: number of covariates cannot be zero if set intercept_fit to be False!"
+            "Error: number of covariates cannot be zero " \
+            "if set intercept_fit to be False!"
         self.model.fit(
             np.random.rand(self.num_states,num_covariates + self.intercept_fit),
             np.arange(self.num_states)
@@ -135,9 +137,9 @@ class TransitionModel():
         Returns:
         ----------
         std: standard error of each coefficient.
-            (number of states - 1, number of covariates)
+            (num_states - 1, num_covariates + intercept_fit)
         p value: used for significance check.
-                (number of states - 1, number of covariates)
+            (num_states - 1, num_covariates + intercept_fit)
         Notes:
         ----------
         (1) we separate binary and multinomial cases.
@@ -167,7 +169,7 @@ class TransitionModel():
             # Initialize Fisher information matrix
             info_matrix = np.zeros((num_coef, num_coef))
 
-            # Calculate variance-covariance matrix
+            # Calculate variance-covariance matrix & fisher information matrix
             for i in range(self.num_states):
                 for j in range(self.num_states):
                     # block by block
@@ -196,13 +198,17 @@ class TransitionModel():
 class LogitChoiceModel():
     """Binary or Multinomial Logit Model"""
 
-    def __init__(self, intercept_fit=False,
+    def __init__(self,
+                 intercept_fit=False,
                  num_choices=2,
-                 num_covariates=1):
+                 num_covariates=1
+                 ):
         """
         Notes
         -----
-        num_covariates include constant since X is specified as np.ones.
+        num_covariates include constant since X is specified as np.ones. Note:
+        The treatment of constant is different between TransitionModel and
+        LogitChoiceModel.
         """
 
         self.num_choices = num_choices

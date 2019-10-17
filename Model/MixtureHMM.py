@@ -12,7 +12,8 @@ __email__ = "mengqiao.yu@berkeley.edu"
 
 logger = logging.getLogger()
 # Set the path to results directory
-results_dir = 'path_of_results_directory'
+results_dir = '/Users/MengqiaoYu/Desktop/Research/WholeTraveler/lccm_test_result/'
+# results_dir = 'path_of_results_directory'
 log_file=os.path.join(results_dir,
                       datetime.now().strftime('%y-%m-%d_%H_%M_%S') + '.txt')
 logging.basicConfig(format='%(message)s',
@@ -1235,7 +1236,7 @@ class HeteroMixtureHMM(MixtureHMM):
 
 class MixtureLCCM(MixtureHMM):
     """
-    This class deals with the static version of heterogeneous Mixture HMM.
+    This class deals with LCCM.
     This has two type of models:
     (1) Initial model, i.e., class-membership model whose form is similar to
     transition model.
@@ -1249,7 +1250,7 @@ class MixtureLCCM(MixtureHMM):
                  log_init_prob
                  ):
         """
-        forward step in Baum–Welch algorithm.
+        We adapted from the forward step in the dynamic case.
 
         Parameters
         ----------
@@ -1261,7 +1262,7 @@ class MixtureLCCM(MixtureHMM):
         Returns
         -------
         log_alpha: ndarray
-            the probability of being in state i.
+            the probability of observing y_n and being in state i.
             (1, num of states)
         """
 
@@ -1271,7 +1272,9 @@ class MixtureLCCM(MixtureHMM):
 
     def _calc_log_gamma(self, log_alpha, log_ll):
         """
-        calculate log of gamma: the expectation of q_n.
+        We adapted from the dynamic case.
+        Calculate log of gamma (sufficient statistics):
+        the expectation of individual n being in state i given y_n, P(q_n | y).
 
         Parameters
         ----------
@@ -1279,12 +1282,12 @@ class MixtureLCCM(MixtureHMM):
             the probability of being in state i.
             (1, num of states)
         log_ll: float
-            log of likelihood: log(p(y|theta))
+            log(p(y|theta))
 
         Returns
         -------
         log_gamma: ndarray
-            gamma(q_n) = P(q_n | y), (num of states, 1)
+            (num of states, 1)
         """
         log_gamma = log_alpha - log_ll
         return log_gamma.T
@@ -1461,7 +1464,7 @@ class MixtureLCCM(MixtureHMM):
         obs_seq = []
         init_X = []
 
-        logger.info("The initial covariates are:")
+        logger.info("The covariates in class membership model are:")
         logger.info(self.init_cov_header)
 
         for sample in data:
@@ -1538,7 +1541,6 @@ class MixtureLCCM(MixtureHMM):
                     std, p = choice_models[i][c].get_std()
                     logger.info("\t\t\t" + print_array(p, 3) + '\n')
 
-
     def predict(self, obs_seq_temp, init_X_temp,
                 calc_state = True, calc_choice = False):
         """
@@ -1583,7 +1585,6 @@ class MixtureLCCM(MixtureHMM):
                 choice_prob[n, c, :] = np.dot(state_prob, state_choice_prob)
 
         return state_prob, choice_prob
-
 
     def train_MixtureLCCM(self,
               cutoff_value,
